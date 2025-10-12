@@ -1,0 +1,13 @@
+{
+  "name": "adventureland",
+  "version": "0.1.0",
+  "description": "A tiny starter for Adventure Land (Node.js)",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js",
+    "verify": "node -p \"typeof require('./main').startAdventure\""
+  },
+  "keywords": ["adventure", "game", "starter"],
+  "author": "",
+  "license": "MIT"
+}
