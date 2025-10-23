@@ -57,7 +57,22 @@ function routine_attack() {
     }
 }
 
+let my_characters = ['AMerchant'];
+
 function routine() {
+    let active_characters = get_active_characters();
+    for (my_character of my_characters) {
+        let active_character = active_characters[my_character];
+        if (!active_character) {
+            start_character(my_character, 'merchant');
+        }
+        else {
+            if (active_character == "code") {
+
+            }
+        }
+    }
+    
     if (!character.rip) {
         let hpot_count = inventory_item_count("hpot1");
         let mpot_count = inventory_item_count("mpot1");
