@@ -3,6 +3,7 @@ setInterval(routine_attack, 1000/4);
 setInterval(routine, 1000/4);
 
 let farm_monsters = ["snake", "osnake"];
+let my_characters = ['AMerchant'];
 
 function routine_move() {
     // todo : if mpot count == 0 || hpot count == 0 then go to town
@@ -56,8 +57,6 @@ function routine_attack() {
         }
     }
 }
-
-let my_characters = ['AMerchant'];
 
 function routine() {
     let active_characters = get_active_characters();
@@ -128,12 +127,21 @@ function sum_to_numbers(number1, number2) {
 function merge_inventory_items() {
     for (let i = 0; i < 42; i++) {
         let item = character.items[i];
+
         if (item && item.name == "hpot1" && i != 41) {
-            swap(41, i);
+            let item1 = character.items[41];
+            let item2 = character.items[i];
+            if (item1 && item2 && item1.q && item2.q && (item1.q + item2.q) <= 9999) {
+                swap(41, i);
+            }
         }
 
         if (item && item.name == "mpot1" && i != 40) {
-            swap(40, i);
+            let item1 = character.items[40];
+            let item2 = character.items[i];
+            if (item1 && item2 && item1.q && item2.q && (item1.q + item2.q) <= 9999) {
+                swap(40, i);
+            }
         }
     }
 
@@ -144,7 +152,11 @@ function merge_inventory_items() {
             let operations_count = same_items.length - 1;
             if (operations_count > 0) {
                 for (let j = operations_count; j > 0; j--) {
-                    swap(same_items[j], same_items[j-1]);
+                    let item1 = character.items[same_items[j]];
+                    let item2 = character.items[same_items[j-1]];
+                    if (item1 && item2 && item1.q && item2.q && (item1.q + item2.q) <= 9999) {
+                        swap(same_items[j], same_items[j-1]);
+                    }
                 }
             }
         }
