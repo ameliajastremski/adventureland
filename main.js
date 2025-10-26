@@ -3,7 +3,10 @@ setInterval(routine_attack, 1000/4);
 setInterval(routine, 1000/4);
 
 let farm_monsters = ["snake", "osnake"];
-let my_characters = ['AMerchant'];
+let merchant_name = 'AMerchant';
+let main_character_name = 'Ammage';
+let my_characters = [merchant_name];
+let items_not_for_merchant = ["hpot1", "mpot1"];
 
 function routine_move() {
     // todo : if mpot count == 0 || hpot count == 0 then go to town
@@ -59,17 +62,41 @@ function routine_attack() {
 }
 
 function routine() {
+
+    // start all my characters if not active
     let active_characters = get_active_characters();
     for (my_character of my_characters) {
         let active_character = active_characters[my_character];
         if (!active_character) {
             start_character(my_character, 'merchant');
+            
         }
         else {
             if (active_character == "code") {
 
             }
         }
+    }
+
+    // invite all my characters if not in party
+    for (my_character of my_characters) {
+        if (!parent.party[my_character]) {
+            send_party_invite(my_character);
+        }
+    }
+
+    // if merchant is near then send all items and gold to merchant
+    let merchant = parent.entities[merchant_name];
+    if (merchant && distance(character, merchant) < 300) {
+        // send all items to merchant
+        for (i = 0; i < 42; i++) {
+            let item = character.items[i];
+            if (item && !items_not_for_merchant.includes(item.name)) {
+                send_item(merchant_name, i, 100);
+            }
+        }
+
+        send_gold(merchant_name, character.gold);
     }
     
     if (!character.rip) {
@@ -119,6 +146,13 @@ function inventory_item_count(item_name) {
     return result;
 }
 
+function on_party_invite(name) // called by the inviter's name
+{
+    if (name == main_character_name) {
+	    accept_party_invite(name);
+    }
+}
+
 function sum_to_numbers(number1, number2) {
     let result = number1 + number2;
     return result;
@@ -163,11 +197,15 @@ function merge_inventory_items() {
     }
 }
 
-function get_inventory_item_indexes(item_name) {
+function get_inventory_item_indexes(item_name, level) {
+    if (!level) {
+        level = 0;
+    }
+    
     let indexes = [];
     for (let i = 0; i < 42; i++) {
         let item = character.items[i];
-        if (item != null && item.name === item_name) {
+        if (item != null && item.name === item_name && ((item.level && item.level === level) || (!item.level && level == 0))) {
             indexes.push(i);
         }
     }
