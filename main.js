@@ -2,10 +2,10 @@ setInterval(routine_move, 1000/4);
 setInterval(routine_attack, 1000/4);
 setInterval(routine, 1000/4);
 
-let farm_monsters = ["snake", "osnake"];
+let farm_monsters = ["rat"];
 let merchant_name = 'AMerchant';
 let main_character_name = 'Ammage';
-let my_characters = [merchant_name];
+let my_characters = [merchant_name, "AWarrior", "AmRanger"];
 let items_not_for_merchant = ["hpot1", "mpot1"];
 
 function routine_move() {
@@ -54,36 +54,46 @@ function routine_attack() {
             }
         }
 
-        if (is_in_range(target))
+        if (is_in_range(target) && can_attack(target))
         {
             attack(target);
         }
     }
 }
 
+// initialize to 1 minute ago so the first CM can be sent immediately
+let last_merchant_cm = new Date(Date.now() - 60 * 1000);
+
 function routine() {
 
     // start all my characters if not active
-    let active_characters = get_active_characters();
-    for (my_character of my_characters) {
-        let active_character = active_characters[my_character];
-        if (!active_character) {
-            start_character(my_character, 'merchant');
-            
-        }
-        else {
-            if (active_character == "code") {
+    if (character.name == main_character_name) {
+        let active_characters = get_active_characters();
+        for (my_character of my_characters) {
+            let active_character = active_characters[my_character];
+            if (!active_character) {
+                if (my_character != merchant_name) {
+                    start_character(my_character, 'main');
+                }
+                else {
+                    start_character(my_character, 'merchant');
+                }
+            }
+            else {
+                if (active_character == "code") {
 
+                }
+            }
+        }
+
+        // invite all my characters if not in party
+        for (my_character of my_characters) {
+            if (!parent.party[my_character]) {
+                send_party_invite(my_character);
             }
         }
     }
-
-    // invite all my characters if not in party
-    for (my_character of my_characters) {
-        if (!parent.party[my_character]) {
-            send_party_invite(my_character);
-        }
-    }
+    
 
     // if merchant is near then send all items and gold to merchant
     let merchant = parent.entities[merchant_name];
@@ -97,6 +107,30 @@ function routine() {
         }
 
         send_gold(merchant_name, character.gold);
+    }
+
+    // if character.esize < 10 or character.gold > 1000000 or hpot count < 500 || mpot count < 500 then send message to merchant
+    let esize = character.esize;
+    let gold = character.gold;
+    let hpot_count = inventory_item_count("hpot1");
+    let mpot_count = inventory_item_count("mpot1");
+    if (esize < 10 || gold > 500000 || hpot_count < 500 || mpot_count < 500) {
+        let msg = { "esize": esize, "gold": gold, "hpot_count": hpot_count, "mpot_count": mpot_count };
+        // if more than 1 minute since last cm then send
+        let now = new Date();
+        let merchant_near = parent.entities[merchant_name];
+        let merchant = parent.party[merchant_name];
+        if (merchant && !merchant_near) {
+            if (now - last_merchant_cm > 60000) {
+                send_cm(merchant_name, msg);
+                party_say("help");
+                last_merchant_cm = now;
+                game_log("Sent CM to merchant: " + JSON.stringify(msg));
+            }
+        }
+        else {
+            game_log("No merchant to send CM to");
+        }
     }
     
     if (!character.rip) {

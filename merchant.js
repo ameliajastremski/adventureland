@@ -1,6 +1,6 @@
-let bank_items = ["candy0", "candy1"];
-let sell_items = ["wbreeches", "wgloves", "wcap", "wshoes"];
-let compound_items = ["intamulet", "dexamulet", "stramulet"];
+let bank_items = ["candy0", "candy1", "wbreeches"];
+let sell_items = ["wgloves", "wcap", "wshoes", "wattire", "glolipop", "ringsj", "hpbelt", "hpamulet"]; // "wbreeches", 
+let compound_items = ["intamulet", "dexamulet", "stramulet", "lostearring"];
 let main_character_name = 'Ammage';
 let fancypots_position = G.maps.main.npcs.filter(npc => npc.id == "fancypots")[0].position;
 let fancypots = {x: fancypots_position[0], y: fancypots_position[1]};
@@ -8,7 +8,12 @@ let fancypots = {x: fancypots_position[0], y: fancypots_position[1]};
 setInterval(routine, 1000/4);
 
 function routine() {
+    // close stand if moving
+    if ((character.moving || smart.moving) && character.stand) close_stand();
+    
     if (character.moving || smart.moving) return;
+
+    // store items in bank
     if (has_any_bank_item()) {
         close_stand();
 
@@ -25,11 +30,18 @@ function routine() {
             }
         }
     }
-    else if (character.map == "bank") {
+    else if (character.map == "bank" && !has_any_bank_item()) {
+        // all items stored, go back to main
         smart_move("main");
     }
     else {
-
+        let compoundable_item_indexes = get_compoundable_item();
+        let hpot_count = inventory_item_count("hpot1");
+        let mpot_count = inventory_item_count("mpot1");
+        let hpot_to_buy = 9999 - hpot_count;
+        let mpot_to_buy = 9999 - mpot_count;
+        let can_buy_pots = character.gold >= (hpot_to_buy * G.items.hpot1.g) + (mpot_to_buy * G.items.mpot1.g);
+        // sell items to fancypots
         if (has_some_item(sell_items)) {
             game_log("going to fancypots to sell items");
             if (distance(character, fancypots) < 200) {
@@ -45,20 +57,24 @@ function routine() {
                 smart_move("fancypots");
             }
         }
-
-        let compoundable_item_indexes = get_compoundable_item();
-        if (compoundable_item_indexes.length >= 3) {
-            if(!character.q.compound) {
+        else if (compoundable_item_indexes.length >= 3) {
+            if (!character.q.compound) {
                 game_log("compounding items");
                 smart_move(find_npc("newupgrade")).then(() => {
                     compound(compoundable_item_indexes[0], compoundable_item_indexes[1], compoundable_item_indexes[2], 38);
                 });
             }
         }
-
-        
-
-        open_stand();
+        else if ((hpot_count < 9999 || mpot_count < 9999) && can_buy_pots) {
+            game_log("going to fancypots to buy potions");
+            smart_move("fancypots").then(() => {
+                buy("hpot1", hpot_to_buy);
+                buy("mpot1", mpot_to_buy);
+            });
+        }
+        else {
+            open_stand();
+        }
     }
 }
 
@@ -96,7 +112,7 @@ function has_some_item(items) {
 function get_compoundable_item() {
     for (let i = 0; i < compound_items.length; i++) {
         let item_name = compound_items[i];
-        for (let l = 0; l < 4; l++) {
+        for (let l = 0; l < 2; l++) {
             for (let j = 0; j < 42; j++) {
                 let item = character.items[j];
                 if (item && item.name === item_name) {
@@ -151,4 +167,31 @@ function get_inventory_item_indexes(item_name, level) {
         }
     }
     return indexes;
+}
+
+function on_cm(name, data)
+{
+    if (character.moving || smart.moving) return;
+
+    let hpot_count = inventory_item_count("hpot1");
+    let mpot_count = inventory_item_count("mpot1");
+    
+    if (hpot_count < 9999 || mpot_count < 9999) return;
+
+    close_stand();
+
+    let party_member = parent.party[name];
+    if (party_member) {
+        game_log("received cm from " + name + ": " + JSON.stringify(data));
+        smart_move(parent.party[name]).then(() => {
+            let hpot_to_send = 9999 - data.hpot_count;
+            let mpot_to_send = 9999 - data.mpot_count;
+
+            let hpot_index = get_inventory_item_indexes("hpot1")[0];
+            let mpot_index = get_inventory_item_indexes("mpot1")[0];
+
+            send_item(name, hpot_index, hpot_to_send);
+            send_item(name, mpot_index, mpot_to_send);
+        });
+    }
 }
