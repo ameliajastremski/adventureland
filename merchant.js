@@ -1,3 +1,9 @@
+const colorGreen = "#1ED97C";
+const colorWhite = "#EFF6FF";
+const colorShading = "#909CC0";
+const colorNavy = "#1C222B";
+const colorRed = "#FF0000";
+
 let bank_items = ["candy0", "candy1", "wbreeches"];
 let sell_items = ["wgloves", "wcap", "wshoes", "wattire", "glolipop", "ringsj", "hpbelt", "hpamulet"]; // "wbreeches", 
 let compound_items = ["intamulet", "dexamulet", "stramulet", "lostearring"];
@@ -9,9 +15,9 @@ setInterval(routine, 1000/4);
 
 function routine() {
     // close stand if moving
-    if ((character.moving || smart.moving) && character.stand) close_stand();
+    if ((character.moving || smart.moving || (smart.searching && !smart.found)) && character.stand) close_stand();
     
-    if (character.moving || smart.moving) return;
+    if (character.moving || smart.moving || (smart.searching && !smart.found)) return;
 
     // store items in bank
     if (has_any_bank_item()) {
@@ -171,7 +177,10 @@ function get_inventory_item_indexes(item_name, level) {
 
 function on_cm(name, data)
 {
-    if (character.moving || smart.moving) return;
+    if (character.moving || smart.moving || (smart.searching && !smart.found)) {
+        game_log("busy, cannot help " + name + " " + character.moving + " " + smart.moving + " " + smart.searching, colorRed);
+        return;
+    }
 
     let hpot_count = inventory_item_count("hpot1");
     let mpot_count = inventory_item_count("mpot1");
