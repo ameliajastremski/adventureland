@@ -8,17 +8,17 @@ setInterval(routine_move, 1000/4);
 setInterval(routine_attack, 1000/4);
 setInterval(routine, 1000/4);
 
-let farm_monsters = ["rat"];
+let farm_monsters = ["goo"];
 let merchant_name = 'AMerchant';
 let main_character_name = 'Ammage';
 let my_characters = [merchant_name, "AWarrior", "AmRanger"];
-let items_not_for_merchant = ["hpot1", "mpot1"];
+let items_not_for_merchant = ["hpot1", "mpot1", "tracker"];
 
 function routine_move() {
     // todo : if mpot count == 0 || hpot count == 0 then go to town
     // todo : if near no required monsters and hpot count == 9999 and mpot count == 9999 then go to hunting area
     if (!character.moving && !smart.moving) {  
-        if (get_near_monsters_count(farm_monsters) == 0) {
+        if (get_near_mtypes_monsters_count(farm_monsters) == 0) {
             smart_move(farm_monsters[0]);
         }
         else {
@@ -26,11 +26,12 @@ function routine_move() {
             if (target)  {
                 if (!is_in_range(target))
                 {
-                    move(
-                        character.x+(target.x-character.x)/2,
-                        character.y+(target.y-character.y)/2
-                        );
-                    // Walk half the distance
+                    if (can_move_to(target.x, target.y)) {
+                        move(target.x, target.y);
+                    }
+                    else {
+                        smart_move(target);
+                    }
                 }
             }
         }
@@ -43,7 +44,7 @@ function routine_attack() {
     }
     else {
         // todo : if mpot count == 0 || hpot count == 0 then do not attack monsters
-        if (get_near_monsters_count(farm_monsters) == 0) {
+        if (get_near_mtypes_monsters_count(farm_monsters) == 0) {
             return;
         }
 
@@ -75,6 +76,11 @@ function routine_attack() {
 let last_merchant_cm = new Date(Date.now() - 60 * 1000);
 
 function routine() {
+
+    if (character.rip) {
+        check_rip();
+        return;
+    }
 
     // start all my characters if not active
     if (character.name == main_character_name) {
@@ -175,6 +181,22 @@ function routine() {
     }
 }
 
+let last_respawn = new Date();
+function check_rip() {
+    if (character.rip) {
+        let now = new Date();
+        var secondsWait = Math.round((last_respawn.valueOf() - now.valueOf() + 10000) / 1000);
+        if (secondsWait < 0) {
+            respawn();
+            last_respawn = new Date();
+        }
+        else {
+            set_message("rip " + secondsWait + "s");
+        }
+        return;
+    }
+}
+
 function inventory_item_count(item_name) {
     let result = 0;
     for (let i = 0; i < 42; i++) {
@@ -195,11 +217,6 @@ function on_party_invite(name) // called by the inviter's name
     if (name == main_character_name) {
 	    accept_party_invite(name);
     }
-}
-
-function sum_to_numbers(number1, number2) {
-    let result = number1 + number2;
-    return result;
 }
 
 function merge_inventory_items() {
@@ -256,7 +273,7 @@ function get_inventory_item_indexes(item_name, level) {
     return indexes;
 }
 
-function get_near_monsters_count(mtypes) {
+function get_near_mtypes_monsters_count(mtypes) {
     let r = character.range + 400;
     var result = {};
     for (id in parent.entities)
@@ -442,17 +459,24 @@ async function use_mage_skills(target) {
 }
 
 async function use_ranger_skills(target) {
+    // game_log("Using ranger skills on " + target.mtype);
     // huntersmark
     if (can_cast(G.skills.huntersmark, target) && get_percent(character.mp, character.max_mp) > 25 && !is_oneshot_target(target)) {
         // game_log("Hunter's mark", colorGreen);
         use_skill("huntersmark", target);
     }
+    else {
+        // game_log("Cannot cast Hunter's mark", colorRed);
+    }
 
     // supershot
     if (can_cast(G.skills.supershot, target) && get_percent(character.mp, character.max_mp) > 25 && !is_oneshot_target(target)) {
-        // var supershot_damage = get_supershot_damage();
+        var supershot_damage = get_supershot_damage();
         // game_log("Sniping for " + supershot_damage + " dmg and " + Math.round(get_distance(target, character)) + " distance", colorGreen);
         use_skill("supershot", target);
+    }
+    else {
+        // game_log("Cannot cast Supershot", colorRed);
     }
 
     // piercingshot
@@ -460,17 +484,26 @@ async function use_ranger_skills(target) {
         // game_log("piercingshot", colorGreen);
         use_skill('piercingshot', target);
     }
+    else {
+        // game_log("Cannot cast Piercing Shot", colorRed);
+    }
 
     // poisonarrow
     if (can_cast(G.skills.poisonarrow, target) && quantity('poison') > 0 && !is_oneshot_target(target) && (!target.c || !target.c.includes('poisoned'))) {
         // game_log("poisonarrow", colorGreen);
         use_skill('poisonarrow', target);
     }
+    else {
+        // game_log("Cannot cast Poison Arrow", colorRed);
+    }
 
     // 4fingers
     if (can_cast(G.skills["4fingers"], target) && !is_oneshot_target(target)) {
         // game_log("4fingers", colorGreen);
         use_skill('4fingers', target);
+    }
+    else {
+        // game_log("Cannot cast 4 Fingers", colorRed);
     }
 
     // 5-shot NB! aoe
@@ -481,6 +514,9 @@ async function use_ranger_skills(target) {
             // game_log("5shot", colorGreen);
             use_skill('5shot', target);
         }
+    }
+    else {
+        // game_log("5shot != " + target.max_hp  + " target.max_hp", colorRed);
     }
 
     // 3-shot NB! aoe
@@ -496,7 +532,7 @@ async function use_ranger_skills(target) {
         }
     }
     else {
-        // game_log("3shot != " + target.max_hp  + " target.max_hp", colorGreen);
+        // game_log("3shot != " + target.max_hp  + " target.max_hp", colorRed);
     }
 }
 
@@ -511,6 +547,15 @@ function can_cast(cast_skill, target) {
         return (is_in_range(target, skill_key) && !is_on_cooldown(skill_key) && can_use(skill_key) && ((skill.range && range <= skill.range) || !skill.range) && ((skill.level && character.level >= skill.level) || !skill.level) && ((skill.mp && character.mp >= skill.mp) || !skill.mp));
     }
     return false;
+}
+
+function get_skill_key(skills, skill_name) {
+    for (let key in skills) {
+        if (skills[key].name == skill_name) {
+            return key;
+        }
+    }
+    return null;
 }
 
 function is_oneshot_target(target) {
