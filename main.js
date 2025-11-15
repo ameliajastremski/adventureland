@@ -15,22 +15,25 @@ let my_characters = [merchant_name, "AWarrior", "AmRanger"];
 let items_not_for_merchant = ["hpot1", "mpot1", "tracker"];
 
 function routine_move() {
-    // todo : if mpot count == 0 || hpot count == 0 then go to town
-    // todo : if near no required monsters and hpot count == 9999 and mpot count == 9999 then go to hunting area
     if (!character.moving && !smart.moving) {  
-        if (get_near_mtypes_monsters_count(farm_monsters) == 0) {
+        let target = get_targeted_monster();
+        if (target && !farm_monsters.includes(target.mtype)) {
             smart_move(farm_monsters[0]);
         }
         else {
-            let target = get_targeted_monster();
-            if (target)  {
-                if (!is_in_range(target))
-                {
-                    if (can_move_to(target.x, target.y)) {
-                        move(target.x, target.y);
-                    }
-                    else {
-                        smart_move(target);
+            if (get_near_mtypes_monsters_count(farm_monsters) == 0) {
+                smart_move(farm_monsters[0]);
+            }
+            else {
+                if (target)  {
+                    if (!is_in_range(target))
+                    {
+                        if (can_move_to(target.x, target.y)) {
+                            move(target.x, target.y);
+                        }
+                        else {
+                            smart_move(target);
+                        }
                     }
                 }
             }
@@ -50,7 +53,7 @@ function routine_attack() {
 
         let target = get_targeted_monster();
         
-        if (!target)
+        if (!target || !farm_monsters.includes(target.mtype))
         {
             target = get_nearest_monster();
             if (target) change_target(target);
@@ -83,33 +86,11 @@ function routine() {
     }
 
     // start all my characters if not active
-    if (character.name == main_character_name) {
-        let active_characters = get_active_characters();
-        for (my_character of my_characters) {
-            let active_character = active_characters[my_character];
-            if (!active_character) {
-                if (my_character != merchant_name) {
-                    start_character(my_character, 'main');
-                }
-                else {
-                    start_character(my_character, 'merchant');
-                }
-            }
-            else {
-                if (active_character == "code") {
+    if (!character.controller) {
+        check_online();
 
-                }
-            }
-        }
-
-        // invite all my characters if not in party
-        for (my_character of my_characters) {
-            if (!parent.party[my_character]) {
-                send_party_invite(my_character);
-            }
-        }
+        
     }
-    
 
     // if merchant is near then send all items and gold to merchant
     let merchant = parent.entities[merchant_name];
@@ -178,6 +159,38 @@ function routine() {
 
         // use_hp_or_mp();
         loot();
+    }
+}
+
+function check_online() {
+    if (!character.controller) {
+        let active_characters = get_active_characters();
+        
+        for (let party_name of my_characters) {
+            if (party_name !== character.name) {
+                let character_active = false;
+                for (let character_name in active_characters) {
+                    if (party_name == character_name) {
+                        character_active = true;
+                    }
+                }
+
+                if (!character_active) {
+                    if (party_name != merchant_name) {
+                        start_character(party_name, 'main');
+                    }
+                    else {
+                        start_character(party_name, 'merchant');
+                    }
+                }
+                else {
+                    // invite all my characters if not in party
+                    if (!parent.party[party_name]) {
+                        send_party_invite(party_name);
+                    }
+                }
+            }
+        }
     }
 }
 
