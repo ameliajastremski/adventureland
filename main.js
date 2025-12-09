@@ -8,13 +8,15 @@ setInterval(routine_move, 1000/4);
 setInterval(routine_attack, 1000/4);
 setInterval(routine, 1000/4);
 
-let farm_monsters = ["goo"];
+let farm_monsters = ["bee"];
 let merchant_name = 'AMerchant';
 let main_character_name = 'Ammage';
 let my_characters = [merchant_name, "AWarrior", "AmRanger"];
 let items_not_for_merchant = ["hpot1", "mpot1", "tracker"];
 
 function routine_move() {
+    check_holiday_spirit();
+
     if (!character.moving && !smart.moving) {  
         let target = get_targeted_monster();
         if (target && !farm_monsters.includes(target.mtype)) {
@@ -88,8 +90,6 @@ function routine() {
     // start all my characters if not active
     if (!character.controller) {
         check_online();
-
-        
     }
 
     // if merchant is near then send all items and gold to merchant
@@ -633,4 +633,17 @@ function is_hard_to_kill(target) {
         return true;
     }
     return false;
+}
+
+function check_holiday_spirit() {
+    if (parent.S.holidayseason && !character.s.holidayspirit) { 
+        if (is_moving(character) || is_transporting(character) || (smart.moving && smart.searching && !smart.found)) {
+            return;
+        }
+        else {
+            smart_move("newyear_tree").then(() => {
+                parent.socket.emit("interaction",{type:"newyear_tree"});
+            });
+        }
+    }
 }

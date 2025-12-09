@@ -4,8 +4,9 @@ const colorShading = "#909CC0";
 const colorNavy = "#1C222B";
 const colorRed = "#FF0000";
 
-let bank_items = ["candy0", "candy1", "wbreeches", "wattire", "wshoes",  "wcap", "wgloves", "gslime", "beewings"];
-let sell_items = ["slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet"];
+// , "wbreeches", "wattire", "wshoes",  "wcap", "wgloves"
+let bank_items = ["ornament", "mistletoe", "candy0", "candy1", "candycane", "poison", "gslime", "beewings", "funtoken", "feather0", "gem0", "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8"];
+let sell_items = ["slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes",  "wcap", "wgloves"];
 let compound_items = ["intamulet", "dexamulet", "stramulet", "lostearring"];
 let main_character_name = 'Ammage';
 let fancypots_position = G.maps.main.npcs.filter(npc => npc.id == "fancypots")[0].position;
