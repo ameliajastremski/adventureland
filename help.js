@@ -25,3 +25,5 @@ exchange(0).then(()=>{exchange(0).then(()=>{exchange(0).then(()=>{exchange(0).th
 
 // create basket of eggs
 setInterval(() => auto_craft("basketofeggs"), 1)
+
+// 134052

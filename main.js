@@ -13,6 +13,9 @@ let merchant_name = 'AMerchant';
 let main_character_name = 'Ammage';
 let my_characters = [merchant_name, "AWarrior", "AmRanger"];
 let items_not_for_merchant = ["hpot1", "mpot1", "tracker"];
+let sell_items = ["slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes",  "wcap", "wgloves"];
+let fancypots_position = G.maps.main.npcs.filter(npc => npc.id == "fancypots")[0].position;
+let fancypots = { x: fancypots_position[0], y: fancypots_position[1] };
 
 function routine_move() {
     check_holiday_spirit();
@@ -104,6 +107,42 @@ function routine() {
         }
 
         send_gold(merchant_name, character.gold);
+    }
+
+    if (distance(character, fancypots) < 200) {
+        game_log("near fancy pots");
+        for (let i = 0; i < 42; i++) {
+            let item = character.items[i];
+            if (item && sell_items.includes(item.name)) {
+                sell(i, 1);
+            }
+        }
+    }
+
+    
+    if (character.ctype == "mage" && character.level >= 40 && character.mp >= 500 && !is_on_cooldown('alchemy')) { // 347
+        for (let i = 0; i < 42; i++) {
+            let item = character.items[i];
+            if (item && sell_items.includes(item.name)) {
+                if (i == 0) {
+                    use_skill('alchemy');
+                }
+                else {
+                    swap(i, 0).then(() => {
+                        use_skill('alchemy');
+                    }); 
+                }
+            }
+        }
+    }
+
+    if (character.ctype != "mage" && is_party_mage_nearby()) {
+        for (let i = 0; i < 42; i++) {
+            let item = character.items[i];
+            if (item && sell_items.includes(item.name)) {
+                send_item(get_party_mage_name(), i, item.q ? item.q : 1);
+            }
+        }
     }
 
     // if character.esize < 10 or character.gold > 1000000 or hpot count < 500 || mpot count < 500 then send message to merchant
@@ -306,6 +345,31 @@ function get_near_mtypes_monsters_count(mtypes) {
 
 function get_percent(value_current, value_max) {
     return Math.round(value_current / (value_max / 100.0));
+}
+
+// Returns the party mage's name if any exists in the party, otherwise null
+function get_party_mage_name() {
+    let party = parent.party;
+    if (!party) return null;
+    for (let name in party) {
+        if (name) {
+            let party_member = party[name];
+            // let player = get_entity(party_member.name);
+            if (party_member && party_member.type === 'mage') {
+                return name;
+            }
+        }
+    }
+    return null;
+}
+
+// Returns true if a party mage exists and is within the optional `maxDist` (default: 500)
+function is_party_mage_nearby(maxDist = 500) {
+    const mageName = get_party_mage_name();
+    if (!mageName) return false;
+    const player = get_player(mageName);
+    if (!player) return false;
+    return distance(character, player) <= maxDist;
 }
 
 function get_supershot_damage() {
