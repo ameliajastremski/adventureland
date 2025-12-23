@@ -8,7 +8,7 @@ setInterval(routine_move, 1000/4);
 setInterval(routine_attack, 1000/4);
 setInterval(routine, 1000/4);
 
-let farm_monsters = ["bee"];
+let farm_monsters = ["osnake", "snake"];
 let merchant_name = 'AMerchant';
 let main_character_name = 'Ammage';
 let my_characters = [merchant_name, "AWarrior", "AmRanger"];
@@ -22,27 +22,56 @@ function routine_move() {
 
     if (!character.moving && !smart.moving) {  
         let target = get_targeted_monster();
-        if (target && !farm_monsters.includes(target.mtype)) {
-            smart_move(farm_monsters[0]);
-        }
-        else {
-            if (get_near_mtypes_monsters_count(farm_monsters) == 0) {
-                smart_move(farm_monsters[0]);
+        if ((target && !farm_monsters.includes(target.mtype)) || (get_near_mtypes_monsters_count(farm_monsters) == 0 && !target)) {
+            let farm_area = get_farming_area();
+            if (farm_area) {
+                smart_move(farm_area);
             }
             else {
-                if (target)  {
-                    if (!is_in_range(target))
-                    {
-                        if (can_move_to(target.x, target.y)) {
-                            move(target.x, target.y);
-                        }
-                        else {
-                            smart_move(target);
-                        }
-                    }
-                }
+                smart_move(farm_monsters[0])
             }
         }
+        else if (target && !is_in_range(target))  {
+            if (can_move_to(target.x, target.y)) {
+                move(target.x, target.y);
+            }
+            else {
+                smart_move(target);
+            }
+        }
+    }
+}
+
+function get_farming_area() {
+    let areas = get_farming_areas(farm_monsters[0], ["main"]);
+    if (areas.length > 0) {
+        // let area = areas[Math.floor(Math.random() * areas.length)];
+        let area = areas[0];
+
+        // if (character.name == "AmRanger") {
+        //     area = areas[0];
+        // }
+
+        // if (areas.length > 1 && character.name == "AWarrior") {
+        //     area = areas[1];
+        // }
+
+        // if (areas.length > 2 && character.name == main_character_name) {
+        //     area = areas[2];
+        // }
+
+        let x1 = area[0];
+        let y1 = area[1];
+        let x2 = area[2];
+        let y2 = area[3];
+
+        let x = (x1 + x2) / 2;
+        let y = (y1 + y2) / 2;
+        let result_area = { map: "main", x: x, y: y, x1: x1, y1: y1, x2: x2, y2: y2 };
+        return result_area;
+    }
+    else {
+        return null;
     }
 }
 
@@ -52,22 +81,28 @@ function routine_attack() {
     }
     else {
         // todo : if mpot count == 0 || hpot count == 0 then do not attack monsters
-        if (get_near_mtypes_monsters_count(farm_monsters) == 0) {
-            return;
-        }
+        // if (get_near_mtypes_monsters_count(farm_monsters) == 0) {
+        //     return;
+        // }
 
         let target = get_targeted_monster();
         
-        if (!target || !farm_monsters.includes(target.mtype))
+        if (!target || (!farm_monsters.includes(target.mtype) && !target.target))
         {
-            target = get_nearest_monster();
-            if (target) change_target(target);
+            if (target) change_target(null);
+
+            monster = get_nearest_monster();
+            if (monster && (farm_monsters.includes(monster.mtype) || (monster.target && my_characters.includes(monster.target)))) {
+                change_target(monster);
+            }
             else
             {
-                set_message("No Monsters");
+                set_message("no monsters");
                 return;
             }
         }
+
+        target = get_targeted_monster();
 
         if (is_in_range(target) && can_attack(target))
         {
@@ -706,8 +741,23 @@ function check_holiday_spirit() {
         }
         else {
             smart_move("newyear_tree").then(() => {
-                parent.socket.emit("interaction",{type:"newyear_tree"});
+                parent.socket.emit("interaction", { type: "newyear_tree" });
             });
         }
     }
+}
+
+function get_farming_areas(monster_type, maps) {
+    let result = [];
+    for (let map_name of maps) {
+        if (G.maps[map_name] && G.maps[map_name].monsters) {
+            let areas = G.maps[map_name].monsters.filter(monster => monster.type === monster_type).map(m => m.boundary);
+            if (areas) {
+                for (let area of areas) {
+                    result.push(area);
+                }
+            }
+        }
+    }
+    return result;
 }
