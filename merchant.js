@@ -67,9 +67,15 @@ function routine() {
         else if (compoundable_item_indexes.length >= 3) {
             if (!character.q.compound) {
                 game_log("compounding items");
-                smart_move(find_npc("newupgrade")).then(() => {
+                let upgrade_npc = find_npc("newupgrade");
+                if (distance(character, upgrade_npc) < 200) {
                     compound(compoundable_item_indexes[0], compoundable_item_indexes[1], compoundable_item_indexes[2], 38);
-                });
+                }
+                else {
+                    smart_move(find_npc("newupgrade")).then(() => {
+                        compound(compoundable_item_indexes[0], compoundable_item_indexes[1], compoundable_item_indexes[2], 38);
+                    });
+                }
             }
         }
         else if ((hpot_count < 9999 || mpot_count < 9999) && can_buy_pots) {
