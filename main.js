@@ -205,34 +205,36 @@ function routine() {
     }
     
     if (!character.rip) {
-        let hpot_count = inventory_item_count("hpot1");
-        let mpot_count = inventory_item_count("mpot1");
-
-        set_message("" + hpot_count + " " + mpot_count);
-
         merge_inventory_items();
 
-        // todo : if in town and hpot count < 9999 || mpot count < 9999 then buy pots
-
-        let current_mp = character.mp;
-        let current_hp = character.hp;
-
-        let max_mp = character.max_mp;
-        let max_hp = character.max_hp;
-
-        let mp_required = max_mp - current_mp;
-        let hp_required = max_hp - current_hp;
-
-        if (mp_required > 500) {
-            use_skill('use_mp');
-        }
-
-        if (hp_required > 500) {
-            use_skill('use_hp');
-        }
 
         // use_hp_or_mp();
         loot();
+    }
+}
+
+function regen() {
+    let hpot_count = inventory_item_count("hpot1");
+    let mpot_count = inventory_item_count("mpot1");
+    set_message("" + hpot_count + " " + mpot_count);
+
+    // todo : if in town and hpot count < 9999 || mpot count < 9999 then buy pots
+
+    let current_mp = character.mp;
+    let current_hp = character.hp;
+
+    let max_mp = character.max_mp;
+    let max_hp = character.max_hp;
+
+    let mp_required = max_mp - current_mp;
+    let hp_required = max_hp - current_hp;
+
+    if (mp_required > 500) {
+        use_skill('use_mp');
+    }
+
+    if (hp_required > 500) {
+        use_skill('use_hp');
     }
 }
 

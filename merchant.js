@@ -66,15 +66,31 @@ function routine() {
         }
         else if (compoundable_item_indexes.length >= 3) {
             if (!character.q.compound) {
-                game_log("compounding items");
+                
                 let upgrade_npc = find_npc("newupgrade");
                 if (distance(character, upgrade_npc) < 200) {
-                    compound(compoundable_item_indexes[0], compoundable_item_indexes[1], compoundable_item_indexes[2], 38);
+                    let scroll_index = get_scroll_index(compoundable_item_indexes[0]);
+                    if (scroll_index != -1) {
+                        game_log("compounding items");
+                        cast_massproduction();
+                        compound(compoundable_item_indexes[0], compoundable_item_indexes[1], compoundable_item_indexes[2], scroll_index);
+                    }
+                    else {
+                        game_log("need scroll to compound");
+                    }
                 }
                 else {
-                    smart_move(find_npc("newupgrade")).then(() => {
-                        compound(compoundable_item_indexes[0], compoundable_item_indexes[1], compoundable_item_indexes[2], 38);
-                    });
+                    let scroll_index = get_scroll_index(compoundable_item_indexes[0]);
+                    if (scroll_index != -1) {
+                        smart_move(find_npc("newupgrade")).then(() => {
+                            game_log("compounding items");
+                            cast_massproduction();
+                            compound(compoundable_item_indexes[0], compoundable_item_indexes[1], compoundable_item_indexes[2], scroll_index);
+                        });
+                    }
+                    else {
+                        game_log("need scroll to compound");
+                    }
                 }
             }
         }
@@ -89,6 +105,67 @@ function routine() {
             open_stand();
         }
     }
+}
+
+function cast_massproduction() {
+    if (character.ctype != "merchant") return;
+
+    regen();
+
+    if (!character.s || !character.s['massproductionpp']) {
+        if (character.level >= 60 && character.mp >= 200) {
+            use_skill('massproductionpp');
+        }
+    }
+
+    if (!character.s || !character.s['massproduction']) {
+        if (character.level >= 60 && character.mp >= 200) {
+            use_skill('massproduction');
+        }
+    }
+}
+
+function regen() {
+    let hpot_count = inventory_item_count("hpot1");
+    let mpot_count = inventory_item_count("mpot1");
+    set_message("" + hpot_count + " " + mpot_count);
+
+    // todo : if in town and hpot count < 9999 || mpot count < 9999 then buy pots
+
+    let current_mp = character.mp;
+    let current_hp = character.hp;
+
+    let max_mp = character.max_mp;
+    let max_hp = character.max_hp;
+
+    let mp_required = max_mp - current_mp;
+    let hp_required = max_hp - current_hp;
+
+    if (mp_required > 500) {
+        use_skill('use_mp');
+    }
+
+    if (hp_required > 500) {
+        use_skill('use_hp');
+    }
+}
+
+function get_scroll_index(item_index) {
+    let item = character.items[item_index];
+    let i = item.level || 0;
+    if (item) {
+        let item_def = parent.G.items[item.name];
+        if (item_def) {
+            let is_compound = item_def.compound;
+            let is_upgrade = item_def.upgrade;
+            if (!is_compound && !is_upgrade) return -1;
+            let scroll_prefix = is_compound ? "c" : "";
+            let scroll_name = item_def.grades ? (item_def.grades[0] > i ? scroll_prefix + "scroll0" : (item_def.grades[1] > i ? scroll_prefix + "scroll1" : scroll_prefix + "scroll2")) : (i >= 3 ? scroll_prefix + "scroll1" : scroll_prefix + "scroll0");
+            return locate_item(scroll_name);
+        }
+    }
+
+    return -1;
 }
 
 function on_party_invite(name) // called by the inviter's name
