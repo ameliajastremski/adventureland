@@ -16,8 +16,9 @@ let tank = "AWarrior";
 let merchant_name = 'AMerchant';
 let main_character_name = 'Ammage';
 let my_characters = [merchant_name, "AWarrior", "AmRanger"];
-let items_not_for_merchant = ["hpot1", "mpot1", "tracker", "goldbooster", "luckbooster", "xpbooster", "handofmidas", "snowball"];
-let sell_items = ["slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes",  "wcap", "wgloves"];
+let items_not_for_merchant = ["hpot1", "mpot1", "tracker", "goldbooster", "luckbooster", "xpbooster", "handofmidas", "snowball", "wgloves"];
+let sell_items = ["slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes", "wcap"];
+let loot_items = { "gloves" : { loot : { name :"handofmidas", level : 0 }, wear : { name :"wgloves", level : 8 } } };
 let fancypots_position = G.maps.main.npcs.filter(npc => npc.id == "fancypots")[0].position;
 let fancypots = { x: fancypots_position[0], y: fancypots_position[1] };
 
@@ -151,7 +152,7 @@ function routine() {
         // send all items to merchant
         for (i = 0; i < 42; i++) {
             let item = character.items[i];
-            if (item && !items_not_for_merchant.includes(item.name)) {
+            if (item && !items_not_for_merchant.includes(item.name) && (loot_items["gloves"].loot.name != item.name && loot_items["gloves"].loot.level != item.level)) {
                 send_item(merchant_name, i, 100);
             }
         }
@@ -362,14 +363,14 @@ function loot_chests() {
             let hand_of_midas = locate_item("handofmidas");
             if (character.name === loot_character) {
                 // game_log("looting as looter > 1 " + loot_character);
-                let current_gloves = character.slots.gloves;
+                let current_gloves = character?.slots?.gloves?.name == "handofmidas" ? loot_items["gloves"].wear : character?.slots?.gloves;
                 // show_json(Object.keys(parent.chests).length);
                 if (Object.keys(parent.chests) && Object.keys(parent.chests).length >= loot_amount) {
                     game_log("looting as looter > " + loot_character);
                     
                     if (hand_of_midas != -1) {
                         game_log("using handofmidas");
-                        equip_item(hand_of_midas, 'gloves');
+                        equip(hand_of_midas, 'gloves');
                     }
 
                     if (booster > -1) {
@@ -387,7 +388,7 @@ function loot_chests() {
                                     let index = get_leveled_item_index(current_gloves.name, current_gloves.level);
                                     if (index > -1) {
                                         game_log("switched back gloves");
-                                        equip_item(index, 'gloves');
+                                        equip(index, 'gloves');
                                     }
                                 }
                             }).catch(() => {  });
@@ -403,7 +404,7 @@ function loot_chests() {
                                 let index = get_leveled_item_index(current_gloves.name, current_gloves.level);
                                 if (index > -1) {
                                     game_log("switched back gloves");
-                                    equip_item(index, 'gloves');
+                                    equip(index, 'gloves');
                                 }
                             }
                         }
@@ -414,7 +415,7 @@ function loot_chests() {
                         if (current_gloves && current_gloves.name) {
                             let index = get_leveled_item_index(current_gloves.name, current_gloves.level);
                             if (index > -1) {
-                                equip_item(index, 'gloves');
+                                equip(index, 'gloves');
                             }
                         }
                         

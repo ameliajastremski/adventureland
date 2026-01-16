@@ -6,7 +6,7 @@ const colorRed = "#FF0000";
 
 // , "wbreeches", "wattire", "wshoes",  "wcap", "wgloves"
 let bank_items = ["ornament", "mistletoe", "candy0", "candy1", "candycane", "poison", "gslime", "beewings", "funtoken", "feather0", "gem0", "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8"];
-let sell_items = ["slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes",  "wcap", "wgloves"];
+let sell_items = ["slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes",  "wcap"];
 let compound_items = ["intamulet", "dexamulet", "stramulet", "lostearring"];
 let main_character_name = 'Ammage';
 let fancypots_position = G.maps.main.npcs.filter(npc => npc.id == "fancypots")[0].position;
@@ -16,7 +16,6 @@ let merchant_stand_place = { x: -21, y: -313, map: "mansion" };
 setInterval(routine, 1000/4);
 setInterval(buff_luck, 1000);
 setInterval(help, 5000);
-
 
 function routine() {
     if (character.rip) {
