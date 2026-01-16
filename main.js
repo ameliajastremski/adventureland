@@ -7,15 +7,27 @@ const colorRed = "#FF0000";
 setInterval(routine_move, 1000/4);
 setInterval(routine_attack, 1000/4);
 setInterval(routine, 1000/4);
+setInterval(loot_chests, 1000);
 
-let farm_monsters = ["osnake", "snake"];
+let farm_monsters = ["rat"];
+let loot_character = "Ammage";
+// let farm_monsters = ["osnake", "snake"];
+let tank = "AWarrior";
 let merchant_name = 'AMerchant';
 let main_character_name = 'Ammage';
 let my_characters = [merchant_name, "AWarrior", "AmRanger"];
-let items_not_for_merchant = ["hpot1", "mpot1", "tracker"];
+let items_not_for_merchant = ["hpot1", "mpot1", "tracker", "goldbooster", "luckbooster", "xpbooster", "handofmidas", "snowball"];
 let sell_items = ["slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes",  "wcap", "wgloves"];
 let fancypots_position = G.maps.main.npcs.filter(npc => npc.id == "fancypots")[0].position;
 let fancypots = { x: fancypots_position[0], y: fancypots_position[1] };
+
+start();
+
+function start() {
+    if (game.graphics) {
+        load_code('metrics');
+    }
+}
 
 function routine_move() {
     check_holiday_spirit();
@@ -124,6 +136,9 @@ function routine() {
         check_rip();
         return;
     }
+    else {
+        regen();
+    }
 
     // start all my characters if not active
     if (!character.controller) {
@@ -141,10 +156,12 @@ function routine() {
             }
         }
 
-        send_gold(merchant_name, character.gold);
+        if (character.gold > 100000) {
+            send_gold(merchant_name, character.gold);
+        }
     }
 
-    if (distance(character, fancypots) < 200) {
+    if (character.map == "main" && distance(character, fancypots) < 200) {
         game_log("near fancy pots");
         for (let i = 0; i < 42; i++) {
             let item = character.items[i];
@@ -189,28 +206,29 @@ function routine() {
         let msg = { "esize": esize, "gold": gold, "hpot_count": hpot_count, "mpot_count": mpot_count };
         // if more than 1 minute since last cm then send
         let now = new Date();
-        let merchant_near = parent.entities[merchant_name];
+        let merchant_near = get_entity(merchant_name);
         let merchant = parent.party[merchant_name];
-        if (merchant && !merchant_near) {
+        if (merchant && (!merchant_near || distance(character, merchant_near) > 300)) {
             if (now - last_merchant_cm > 60000) {
                 send_cm(merchant_name, msg);
                 party_say("help");
                 last_merchant_cm = now;
-                game_log("Sent CM to merchant: " + JSON.stringify(msg));
+                game_log("sent CM to merchant: " + JSON.stringify(msg));
             }
         }
         else {
-            game_log("No merchant to send CM to");
+            game_log("merchant nearby");
         }
     }
     
-    if (!character.rip) {
-        merge_inventory_items();
+    
+    merge_inventory_items();
 
 
         // use_hp_or_mp();
-        loot();
-    }
+        
+        
+    
 }
 
 function regen() {
@@ -306,6 +324,135 @@ function on_party_invite(name) // called by the inviter's name
     if (name == main_character_name) {
 	    accept_party_invite(name);
     }
+}
+
+function sleep(time) {
+    if (time > 0) game_log("sleeping for " + time + " ms");
+    return new Promise((resolve) => setTimeout(resolve, time));
+}
+
+let loot_amount = 50;
+function loot_some_chests() {
+    game_log("looting some chests");
+    let chest_ix = 0;
+    for (let id of Object.keys(parent.chests)) {
+        parent.open_chest(id);
+        chest_ix++;
+        if (chest_ix >= loot_amount) {
+            break;
+        }
+    }
+}
+
+function loot_chests() {
+    // no loot character defined, just open all chests
+    if (!loot_character) {
+        if (Object.keys(parent.chests) && Object.keys(parent.chests).length >= 1) {
+            for (let id of Object.keys(parent.chests)) {
+                parent.open_chest(id);
+            }
+        }
+        return;
+    }
+
+    // await sleep(character.s?.penalty_cd ?? 0);
+    sleep(character.s?.penalty_cd ?? 0).then(() => {
+        if (parent.chests) {
+            const booster = character.items.findIndex(i => i && i.name.endsWith('booster'));
+            let hand_of_midas = locate_item("handofmidas");
+            if (character.name === loot_character) {
+                // game_log("looting as looter > 1 " + loot_character);
+                let current_gloves = character.slots.gloves;
+                // show_json(Object.keys(parent.chests).length);
+                if (Object.keys(parent.chests) && Object.keys(parent.chests).length >= loot_amount) {
+                    game_log("looting as looter > " + loot_character);
+                    
+                    if (hand_of_midas != -1) {
+                        game_log("using handofmidas");
+                        equip_item(hand_of_midas, 'gloves');
+                    }
+
+                    if (booster > -1) {
+                        game_log("looting as looter > has booster");
+                        if (character.items[booster].name !== 'goldbooster') {
+                            game_log("looting with booster > should switch to goldbooster");
+                            shift(booster, 'goldbooster').then(() => {
+                                // Object.keys(parent.chests)
+                                // making 50 chest a time to avoid disconnect
+                                loot_some_chests();
+
+                                game_log("looted switching back to luckbooster");
+                                shift(booster, 'luckbooster');
+                                if (current_gloves && current_gloves.name) {
+                                    let index = get_leveled_item_index(current_gloves.name, current_gloves.level);
+                                    if (index > -1) {
+                                        game_log("switched back gloves");
+                                        equip_item(index, 'gloves');
+                                    }
+                                }
+                            }).catch(() => {  });
+                        }
+                        else {
+                            game_log("looting with booster > already at goldbooster");
+                            // Object.keys(parent.chests)
+                            loot_some_chests();
+
+                            game_log("looted switching back to luckbooster");
+                            shift(booster, 'luckbooster');
+                            if (current_gloves && current_gloves.name) {
+                                let index = get_leveled_item_index(current_gloves.name, current_gloves.level);
+                                if (index > -1) {
+                                    game_log("switched back gloves");
+                                    equip_item(index, 'gloves');
+                                }
+                            }
+                        }
+                    }
+                    else if (hand_of_midas != -1) {
+                        game_log("looting as looter > has no booster > but has handofmidas");
+                        loot_some_chests();
+                        if (current_gloves && current_gloves.name) {
+                            let index = get_leveled_item_index(current_gloves.name, current_gloves.level);
+                            if (index > -1) {
+                                equip_item(index, 'gloves');
+                            }
+                        }
+                        
+                    }
+                    else {
+                        game_log("looting as looter > has no booster > has no handofmidas");
+                        loot_some_chests();
+                    }
+                }
+            }
+            else {
+                // not a loot character
+                if (Object.keys(parent.chests) && Object.keys(parent.chests).length >= 1) {
+                    // loot_character check without booster and hand of midas
+                    // not a loot character
+                    let loot_entity = get_entity(loot_character);
+                    if (loot_entity && distance(character, loot_entity) < 800 && parent.party_list && parent.party_list.includes(loot_character)) {
+                        // loot character is near => no need to loot
+                    }
+                    else {
+                        if (booster != -1 && character.items[booster].name !== 'goldbooster') {
+                            shift(booster, 'goldbooster').then(() => {
+                                loot().then(() => {
+                                    loot_some_chests();
+                                    shift(booster, 'xpbooster');
+                                });
+                            });
+                        }
+                        else {
+                            game_log("looting chest no looter nearby");
+                            loot_some_chests();
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 function merge_inventory_items() {
@@ -454,10 +601,11 @@ async function use_mage_skills(target) {
     // burst
     
     var manaburst_damage = get_manaburst_damage();
-    // controlled manaburst NB! aoe
-    if (!can_cast(MageSkills.ControlledManaBurst, target) && can_use(MageSkills.ManaBurst.name) && target.hp >= manaburst_damage && character.mp > 2000 && get_percent(character.mp, character.max_mp) > 75) { 
-        game_log("Casting Mana Burst for " + manaburst_damage + " dmg", colorGreen);
-        use_skill(MageSkills.ManaBurst.name, target);
+    // manaburst NB! aoe
+    // use manaburst if can use controlled manaburst
+    if (!can_cast(G.skills.cburst, target) && can_use('burst') && target.hp >= manaburst_damage && character.mp > 2000 && get_percent(character.mp, character.max_mp) > 75) { 
+        if (show_game_log) game_log("Casting Mana Burst for " + manaburst_damage + " dmg", colorGreen);
+        use_skill('burst', target);
     }
 
     // var m_count = get_near_monsters_count();
@@ -471,7 +619,7 @@ async function use_mage_skills(target) {
         if (target.level == 1 && m_count > 1 && m_count < 5 && m_hl_count < 1 && !is_boss(target) && can_cast(G.skills.cburst, target) && character.mp > 2000 && get_percent(character.mp, character.max_mp) > 75 && target.hp / 0.555 < character.mp_cost && is_on_cooldown("attack")) {
             // game_log("Casting Controlled Mana Burst", colorGreen);
             use_skill('cburst', [[target.id, target.hp / 0.555]]);
-            // use_skill(MageSkills.ControlledManaBurst.name, target);
+            // use_skill('cburst', target);
         }
     }
 
@@ -481,12 +629,19 @@ async function use_mage_skills(target) {
         use_skill('cburst', targets);
     }
 
-    //energize
+    //energize tank
     if (tank) {
         var tank_entity = get_entity(tank);
         if (tank_entity && tank_entity.target) {
             var tank_target = get_entity(tank_entity.target);
             if (tank_target && tank_target.target == tank_entity.name && tank_target.hp < tank_target.max_hp) {
+                if (can_cast(G.skills.energize, tank_entity) && get_percent(character.mp, character.max_mp) > 50 && tank_entity.mp < tank_entity.max_mp) {
+                    // game_log("PartyHeal > " + name, colorGreen);
+                    use_skill('energize', tank_entity.name);
+                }
+            }
+            else if (tank_target && !tank_target.target && tank_entity.mp < tank_entity.max_mp) {
+                // tank restore 
                 if (can_cast(G.skills.energize, tank_entity) && get_percent(character.mp, character.max_mp) > 50 && tank_entity.mp < tank_entity.max_mp) {
                     // game_log("PartyHeal > " + name, colorGreen);
                     use_skill('energize', tank_entity.name);
@@ -762,4 +917,48 @@ function get_farming_areas(monster_type, maps) {
         }
     }
     return result;
+}
+
+function get_manaburst_damage() {
+    return 0.555 * character.mp;
+}
+
+function get_party_members() {
+    // use this for near members only
+    // parent.party_list [ "HexMer", "HexPri", "HexNeo", "HexReo" ]
+    if (parent.party_list && parent.party_list != null) {
+        return Object.values(parent.entities).filter(char => is_character(character) && !char.rip && parent.party_list.includes(char.id));
+    }
+    else return [];
+}
+
+function get_item_count(name)
+{
+    // b["q"] || 1
+    var result = character.items.filter(item => item != null && item.name == name).reduce((a,b) => (a + (b && b != null ? (b.q && b.q != null ? b.q : 1) : 0)), 0);
+    return result;
+}
+
+function get_resistance(target) {
+    if (target) {
+        let magic_damage = (character.ctype === "mage" || character.ctype === "priest");
+        if (magic_damage && target.resistance) return target.resistance;
+        else if (target.armor) return target.armor;
+        else return 0;
+    }
+    else return 0;
+}
+
+function get_leveled_item_index(name, level) {
+    if (character.items) {
+        for (var i = 0; i < character.items.length; i++) {
+            var item = character.items[i];
+            if (item && item != null && item.name == name) {
+                if ((!level && (!item.level || item.level == 0)) || (level == 0 && (!item.level || item.level == 0)) || item.level == level) {
+                    return i;
+                }
+            }
+        }
+    }
+    return -1;
 }

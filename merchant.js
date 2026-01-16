@@ -11,10 +11,22 @@ let compound_items = ["intamulet", "dexamulet", "stramulet", "lostearring"];
 let main_character_name = 'Ammage';
 let fancypots_position = G.maps.main.npcs.filter(npc => npc.id == "fancypots")[0].position;
 let fancypots = {x: fancypots_position[0], y: fancypots_position[1]};
+let merchant_stand_place = { x: -21, y: -313, map: "mansion" };
 
 setInterval(routine, 1000/4);
+setInterval(buff_luck, 1000);
+setInterval(help, 5000);
+
 
 function routine() {
+    if (character.rip) {
+        check_rip();
+        return;
+    }
+    else {
+        regen();
+    }
+
     // close stand if moving
     if ((character.moving || smart.moving || (smart.searching && !smart.found)) && character.stand) close_stand();
     
@@ -96,13 +108,50 @@ function routine() {
         }
         else if ((hpot_count < 9999 || mpot_count < 9999) && can_buy_pots) {
             game_log("going to fancypots to buy potions");
-            smart_move("fancypots").then(() => {
-                buy("hpot1", hpot_to_buy);
-                buy("mpot1", mpot_to_buy);
-            });
+            let fancypots_npc = find_npc("fancypots");
+            if (distance(character, fancypots_npc) > 200) {
+                smart_move("fancypots").then(() => {
+                    if (hpot_to_buy > 0) buy("hpot1", hpot_to_buy);
+                    if (mpot_to_buy > 0) buy("mpot1", mpot_to_buy);
+                });
+            }
+            else {
+                if (hpot_to_buy > 0) buy("hpot1", hpot_to_buy);
+                if (mpot_to_buy > 0) buy("mpot1", mpot_to_buy);
+            }
         }
         else {
-            open_stand();
+            if (distance(character, merchant_stand_place) > 100) {
+                smart_move(merchant_stand_place).then(() => {
+                    open_stand();
+                });
+            }
+            else {
+                open_stand();
+            }
+        }
+    }
+}
+
+function buff_luck() {
+    // luck
+    for (const id in parent.entities) {
+        var current = parent.entities[id];
+        //makes sure its a player
+        if (current && is_character(current) && current.ctype != 'merchant') {
+            //determines if they already have a mluck boost and if it's from you
+            if (current.s.mluck && current?.s?.mluck?.f && current?.s?.mluck?.f != character.name && !current?.s?.mluck?.strong) {
+                if (is_in_range(current, "mluck") && can_use("mluck")) {
+                    use_skill("mluck", current.name);
+                }
+            }
+            else {
+                //if they dont already have a boost then boost them
+                if (is_in_range(current, "mluck") && can_use("mluck")) {
+                    // use_luck(current);
+                    use_skill("mluck", current.name);
+                }
+            }
         }
     }
 }
@@ -259,10 +308,14 @@ function get_inventory_item_indexes(item_name, level) {
     return indexes;
 }
 
+
+
 function on_cm(name, data)
 {
+    if (parent.party[name] == null) return;
     if (character.moving || smart.moving || (smart.searching && !smart.found)) {
         game_log("busy, cannot help " + name + " " + character.moving + " " + smart.moving + " " + smart.searching, colorRed);
+        help_queue[name] = { name: name, data: data, timestamp: Date.now(), on_the_way: false };
         return;
     }
 
@@ -287,4 +340,75 @@ function on_cm(name, data)
             send_item(name, mpot_index, mpot_to_send);
         });
     }
+}
+
+let help_queue = {};
+function help() {
+    for (const name in help_queue) {
+        let help_request = help_queue[name];
+        let help_entity = get_entity(name);
+        
+        if (help_request.on_the_way) {
+            game_log("already on the way to help " + name, colorShading);
+            if (!help_entity || distance(character, help_entity) > 300) {
+                return;
+            }
+        }
+
+        if (Date.now() - help_request.timestamp > 60000) {
+            delete help_queue[name];
+            continue;
+        }
+        else {
+            
+
+            if (help_entity && distance(character, help_entity) < 300) {
+                let hpot_to_send = 9999 - help_request.data.hpot_count;
+                let mpot_to_send = 9999 - help_request.data.mpot_count;
+
+                let hpot_index = locate_item("hpot1");
+                let mpot_index = locate_item("mpot1");
+
+                send_item(name, hpot_index, hpot_to_send);
+                send_item(name, mpot_index, mpot_to_send);
+                delete help_queue[name];
+                continue;
+            }
+
+
+            if (character.moving || smart.moving || (smart.searching && !smart.found)) {
+                game_log("busy, cannot help " + name + " " + character.moving + " " + smart.moving + " " + smart.searching, colorRed);
+                return;
+            }
+            else {
+                game_log("going to help " + name, colorGreen);
+                help_queue[name].on_the_way = true;
+                smart_move(parent.party[name]).then(() => {
+                    let hpot_to_send = 9999 - help_request.data.hpot_count;
+                    let mpot_to_send = 9999 - help_request.data.mpot_count;
+
+                    let hpot_index = locate_item("hpot1");
+                    let mpot_index = locate_item("mpot1");
+
+                    send_item(name, hpot_index, hpot_to_send);
+                    send_item(name, mpot_index, mpot_to_send);
+                    delete help_queue[name];
+                 });
+            }
+        }
+    }
+}
+
+function get_leveled_item_index(name, level) {
+    if (character.items) {
+        for (var i = 0; i < character.items.length; i++) {
+            var item = character.items[i];
+            if (item && item != null && item.name == name) {
+                if ((!level && (!item.level || item.level == 0)) || (level == 0 && (!item.level || item.level == 0)) || item.level == level) {
+                    return i;
+                }
+            }
+        }
+    }
+    return -1;
 }

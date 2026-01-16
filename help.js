@@ -5,6 +5,7 @@ for (i = 0; i < 40; i++) {
 
 // go to mage
 smart_move(parent.party["Ammage"])
+close_stand().then(() => { smart_move(parent.party["Ammage"]) });
 
 // invite to party
 send_party_invite('Ammage');
@@ -27,3 +28,8 @@ exchange(0).then(()=>{exchange(0).then(()=>{exchange(0).then(()=>{exchange(0).th
 setInterval(() => auto_craft("basketofeggs"), 1)
 
 // 134052
+show_json({
+    courage: character.courage, // physical
+    mcourage: character.mcourage, // magical
+    pcourage: character.pcourage, // pure
+})
