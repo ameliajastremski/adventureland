@@ -10,34 +10,17 @@ setInterval(routine_move, 250);
 setInterval(routine_attack, 250);
 setInterval(routine, 250);
 setInterval(loot_chests, 2000);
-setInterval(go_to_event, 2000);
-
-function go_to_event() {
-    for (let mtype of event_monsters) {
-        let event_monster = parent.S[mtype];
-        if (event_monster?.live) {
-            let target = character.target ? get_entity(character.target) : null;
-            if (!target || target.mtype != mtype) {
-                smart_move(event_monster).then(() => {
-                    let monster = get_nearest_monster({ mtype: mtype });
-                    if (monster) {
-                        change_target(monster);
-                        smart_move(monster);
-                    }
-                });
-            }
-        }
-    }
-}
+setInterval(use_temporal_orb, 1000);
 
 // let farm_monsters = ["osnake", "snake"];
 // let farm_monsters = ["rat"];
-let farm_monsters = ["crab", "dragold", "pinkgoo"];
+let farm_monsters = ["squig", "squigtoad", "dragold", "pinkgoo"];
 let tank = "AWarrior";
 let merchant_name = 'AMerchant';
 let main_character_name = 'Ammage';
 let my_characters = [merchant_name, "AWarrior", "AmRanger"];
-let items_not_for_merchant = ["hpot1", "mpot1", "tracker", "goldbooster", "luckbooster", "xpbooster", "handofmidas", "snowball", "wgloves"];
+var party_names = { 'Ammage' : { orb : { name : "orbofint", level : 1 } }, 'AmRanger' : { orb : { name : "orbofdex", level : 1 }, mainhand : { name : "bowoffire", level : 9 }, mainhandheal : { name : "cupid", level : 6 } }, 'AWarrior' : { orb : { name : "orbofstr", level : 3 } } };
+let items_not_for_merchant = ["orbofint", "orbofstr", "hpot1", "mpot1", "tracker", "goldbooster", "luckbooster", "xpbooster", "handofmidas", "snowball", "wgloves", "orboftemporal"];
 let sell_items = ["slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes", "wcap"];
 
 let fancypots_position = G.maps.main.npcs.filter(npc => npc.id == "fancypots")[0].position;
@@ -45,11 +28,13 @@ let fancypots = { x: fancypots_position[0], y: fancypots_position[1] };
 
 let show_game_log = false;
 
+let last_respawn = new Date();
+
 let loot_character = "Ammage";
 let is_looting_chests = false;
 let loot_chests_timer = null;
-let loot_amount = 50;
-let loot_items = { "gloves" : { loot : { name :"handofmidas", level : 5 }, wear : { name :"wgloves", level : 8 } } };
+let loot_amount = 70;
+let loot_items = { gloves : { loot : { name :"handofmidas", level : 5 }, wear : { name :"wgloves", level : 8 } } };
 
 start();
 
@@ -73,7 +58,7 @@ function routine_move() {
         if (event_monster?.live) {
             event_live = true;
             let target = character.target ? get_entity(character.target) : null;
-            if (!target || target.mtype != mtype) {
+            if (!target || (target && target.mtype != mtype)) {
                 smart_move(event_monster).then(() => {
                     let monster = get_nearest_monster({ mtype: mtype });
                     if (monster) {
@@ -98,7 +83,6 @@ function routine_move() {
     }
 
     if (!character.moving && !smart.moving) {  
-        
         if ((target && !farm_monsters.includes(target.mtype)) || (get_near_mtypes_monsters_count(farm_monsters) == 0 && !target)) {
             let farm_area = get_farming_area();
             if (farm_area) {
@@ -362,7 +346,6 @@ function check_online() {
     }
 }
 
-let last_respawn = new Date();
 function check_rip() {
     if (character.rip) {
         let now = new Date();
@@ -447,11 +430,11 @@ function loot_chests() {
             let hand_of_midas = locate_item("handofmidas");
             if (character.name === loot_character) {
                 // game_log("looting as looter > 1 " + loot_character);
-                let current_gloves = character?.slots?.gloves?.name == "handofmidas" ? loot_items["gloves"].wear : character?.slots?.gloves;
                 // show_json(Object.keys(parent.chests).length);
                 if (Object.keys(parent.chests) && Object.keys(parent.chests).length >= loot_amount) {
                     game_log("looting as looter > " + loot_character);
                     
+                    // Equip handofmidas if in inventory (might already be equipped from last cycle)
                     if (hand_of_midas != -1) {
                         game_log("using handofmidas");
                         equip(hand_of_midas, 'gloves');
@@ -468,8 +451,9 @@ function loot_chests() {
 
                                 game_log("looted switching back to luckbooster");
                                 shift(booster, 'luckbooster');
-                                if (current_gloves && current_gloves.name) {
-                                    let index = get_leveled_item_index(current_gloves.name, current_gloves.level);
+                                let wear_gloves = loot_items.gloves.wear;
+                                if (wear_gloves && wear_gloves.name) {
+                                    let index = get_leveled_item_index(wear_gloves.name, wear_gloves.level);
                                     if (index > -1) {
                                         game_log("switched back gloves");
                                         equip(index, 'gloves');
@@ -484,8 +468,9 @@ function loot_chests() {
 
                             game_log("looted switching back to luckbooster");
                             shift(booster, 'luckbooster');
-                            if (current_gloves && current_gloves.name) {
-                                let index = get_leveled_item_index(current_gloves.name, current_gloves.level);
+                            let wear_gloves = loot_items.gloves.wear;
+                            if (wear_gloves && wear_gloves.name) {
+                                let index = get_leveled_item_index(wear_gloves.name, wear_gloves.level);
                                 if (index > -1) {
                                     game_log("switched back gloves");
                                     equip(index, 'gloves');
@@ -493,19 +478,9 @@ function loot_chests() {
                             }
                         }
                     }
-                    else if (hand_of_midas != -1) {
-                        game_log("looting as looter > has no booster > but has handofmidas");
-                        loot_some_chests();
-                        if (current_gloves && current_gloves.name) {
-                            let index = get_leveled_item_index(current_gloves.name, current_gloves.level);
-                            if (index > -1) {
-                                equip(index, 'gloves');
-                            }
-                        }
-                        
-                    }
                     else {
-                        game_log("looting as looter > has no booster > has no handofmidas");
+                        // No booster: just loot and switch back to wear gloves
+                        game_log("looting as looter > no booster");
                         loot_some_chests();
                     }
                 }
@@ -536,6 +511,17 @@ function loot_chests() {
                 }
             }
         }
+
+        // Always switch back to wear gloves after looting
+        let wear_gloves = loot_items.gloves.wear;
+        if (wear_gloves && wear_gloves.name) {
+            let index = get_leveled_item_index(wear_gloves.name, wear_gloves.level);
+            if (index > -1 && (character.slots['gloves'] == null || character.slots['gloves'].name != wear_gloves.name || character.slots['gloves'].level != wear_gloves.level)) {
+                game_log("switched back gloves");
+                equip(index, 'gloves');
+            }
+        }
+
         // Clear timer and reset flag
         if (loot_chests_timer) {
             clearTimeout(loot_chests_timer);
@@ -1053,6 +1039,14 @@ function get_leveled_item_index(name, level) {
     return -1;
 }
 
+function get_near_monster_type_count(mtype) {
+    let a = Object.values(parent.entities).filter(c => c.type === 'monster' && c.mtype === mtype);
+    if (a) {
+        return a.length;
+    }
+    else return 0;
+}
+
 game.on("event", function (data) {
     // has_buff > character.s["easterluck"]
     if (data.name == "wabbit" && !has_buff(character, "easterluck")) {
@@ -1090,3 +1084,58 @@ game.on("event", function (data) {
         });
 	}
 });
+
+let temporal_surge_monsters = ['squigtoad'];
+function use_temporal_orb() {
+    let maps = ['main'];
+    if (!is_on_cooldown("temporalsurge")) {
+        // game_log("Checking temporal surge monsters around: " + temporal_surge_monsters.join(", "));
+        for (let mtype of temporal_surge_monsters) {
+            let farming_areas = get_farming_areas(mtype, maps);
+            for (let area of farming_areas) {
+                let area_map = area.length == 5 ? area[4] : maps[0];
+                var area_x = ((area[0] + area[2]) / 2);
+                var area_y = ((area[1] + area[3]) / 2);
+                let farming_area = { x: area_x, y: area_y, map: area_map };
+                if (distance(character, farming_area) < 200 && character.map == farming_area.map) {
+                    let count = get_near_monster_type_count(mtype);
+                    // game_log("Found " + count + " " + mtype + " around, checking temporal surge usage");
+                    // we should use orb to make monsters respawn faster
+                    if (count == 0) {
+                        if (!is_on_cooldown("temporalsurge")) {
+                            // game_log("Using temporal surge for faster respawn");
+                            let current_item = character.slots.orb;
+                            let orb_item = party_names[character.name].orb;
+                            let index = locate_item("orboftemporal");
+
+                            if (index == -1 && (current_item && current_item.name != "orboftemporal")) return;
+
+                            if (!current_item || current_item.name != "orboftemporal") {
+                                equip(index, "orb");
+                            }
+
+                            use_skill("temporalsurge");
+
+                            let equip_index = locate_item(orb_item.name);
+
+                            if (equip_index != -1) {
+                                equip(equip_index, "orb");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    else if (is_on_cooldown("temporalsurge")) {
+        let orb_item = party_names[character.name].orb;
+        if (!orb_item) return;
+        let current_item = character.slots.orb;
+        if (!current_item || current_item.name != orb_item.name) {
+            let index = locate_item(orb_item.name);
+            if (index != -1) {
+                equip(index, "orb");
+            }
+        }
+    }
+}

@@ -5,7 +5,7 @@ const colorNavy = "#1C222B";
 const colorRed = "#FF0000";
 
 // , "wbreeches", "wattire", "wshoes",  "wcap", "wgloves"
-let bank_items = ["seashell", "firebow", "intearring", "dexearring", "strearring", "ornament", "mistletoe", "candy0", "candy1", "candycane", "poison", "gslime", "beewings", "funtoken", "feather0", "gem0", "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8"];
+let bank_items = ["brownenvelope", "frogt", "pstem", "ink", "snakeoil", "seashell", "essenceoffire", "goldenegg", "candypop", "seashell", "firebow", "intearring", "dexearring", "strearring", "ornament", "mistletoe", "candy0", "candy1", "candycane", "poison", "gslime", "beewings", "funtoken", "feather0", "gem0", "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8"];
 let sell_items = [ "crabclaw", "vitscroll", "slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes", "wcap", "cclaw", "vitearring", "rattail" ];
 let compound_items = ["intearring", "dexearring", "strearring", "intamulet", "dexamulet", "stramulet", "lostearring"];
 let main_character_name = 'Ammage';
@@ -43,22 +43,18 @@ function routine() {
         if (character.stand) close_stand();
 
         // go to bank
-        for (let i = 0; i < bank_items.length; i++) {
-            let bank_item_name = bank_items[i];
-            if (has_item(bank_item_name) || lost_earring_index != -1) {
+        if (has_bank_item() || lost_earring_index != -1) {
+            if (character.map != "bank") {
                 smart_move("bank").then(() => {
-                    if (lost_earring_index != -1) {
-                        game_log("storing lost earring +2");
-                        bank_store(lost_earring_index);
-                        lost_earring_index = -1; // only store once
-                    }
-
-                    let inventory_item_indexes = get_inventory_item_indexes(bank_item_name);
-                    for (let inventory_item_index of inventory_item_indexes) {
-                        bank_store(inventory_item_index);
-                    }
+                    store_bank_items();
                 });
             }
+            else {
+                store_bank_items();
+            }
+        }
+        else if (character.map == "bank") {
+            smart_move("main");
         }
     }
     else if (character.map == "bank" && !has_any_bank_item()) {
@@ -131,6 +127,36 @@ function routine() {
     }
 
     help();
+}
+function has_bank_item() {
+    for (let i = 0; i < bank_items.length; i++) {
+        let bank_item_name = bank_items[i];
+        if (has_item(bank_item_name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function store_bank_items() {
+    if (character.map == "bank") {
+        let lost_earring_index = get_leveled_item_index("lostearring", 2);
+        for (let i = 0; i < bank_items.length; i++) {
+            let bank_item_name = bank_items[i];
+            if (lost_earring_index != -1) {
+                game_log("storing lost earring +2");
+                bank_store(lost_earring_index);
+                lost_earring_index = -1; // only store once
+            }
+
+            let inventory_item_indexes = get_inventory_item_indexes(bank_item_name);
+            for (let inventory_item_index of inventory_item_indexes) {
+                bank_store(inventory_item_index);
+            }
+        }
+
+        smart_move("main");
+    }
 }
 
 function sell_some() {
