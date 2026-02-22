@@ -38,3 +38,8 @@ for (let i = 0; i < 28; i++) {
     let item = character.items[i];
     if (item) send_item('HexMer', i, item.q ? item.q : 1);
 }
+
+for (let i = 0; i < 28; i++) {
+    let item = character.items[i];
+    if (item) send_item('HexNeo', i, item.q ? item.q : 1);
+}
