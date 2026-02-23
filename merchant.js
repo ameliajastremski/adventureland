@@ -5,9 +5,10 @@ const colorNavy = "#1C222B";
 const colorRed = "#FF0000";
 
 // , "wbreeches", "wattire", "wshoes",  "wcap", "wgloves"
-let bank_items = ["brownenvelope", "frogt", "pstem", "ink", "snakeoil", "seashell", "essenceoffire", "goldenegg", "candypop", "seashell", "firebow", "ornament", "mistletoe", "candy0", "candy1", "candycane", "poison", "gslime", "beewings", "funtoken", "feather0", "gem0", "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8"];
-let sell_items = [ "crabclaw", "vitscroll", "slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes", "wcap", "cclaw", "vitearring", "rattail" ];
-let compound_items = ["intearring", "dexearring", "strearring", "intamulet", "dexamulet", "stramulet", "lostearring"];
+let bank_items = ["cupid", "snakefang", "brownenvelope", "frogt", "pstem", "ink", "snakeoil", "seashell", "essenceoffire", "goldenegg", "candypop", "seashell", "firebow", "ornament", "mistletoe", "candy0", "candy1", "candycane", "poison", "gslime", "beewings", "funtoken", "feather0", "gem0", "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8"];
+let sell_items = ["intamulet", "dexamulet", "stramulet", "crabclaw", "vitscroll", "slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes", "wcap", "cclaw", "vitearring", "rattail"];
+// ,  "lostearring"
+let compound_items = ["intearring", "dexearring", "strearring"];
 let main_character_name = 'Ammage';
 let fancypots_position = G.maps.main.npcs.filter(npc => npc.id == "fancypots")[0].position;
 let fancypots = {x: fancypots_position[0], y: fancypots_position[1]};
@@ -15,7 +16,7 @@ let fancypots = {x: fancypots_position[0], y: fancypots_position[1]};
 let merchant_stand_place = { x: 10, y: 10, map: "main" };
 let help_queue = [];
 let last_respawn = new Date();
-let cooperating = { 'HexMer' : { items : {"intearring": { level : 0 }, "dexearring": { level : 0 }, "strearring": { level : 0 } }  }, 'HexNeo' : { items : { "xmace" : { level : 0 }, "fireblade"  : { level : 0 }, "firestaff" : { level : 0 }, "firebow" : { level : 0 } } } };
+let cooperating = { 'HexMer' : { items : {"intearring": { level : -1 }, "dexearring": { level : -1 }, "strearring": { level : -1 } }  }, 'HexNeo' : { items : { "xmace" : { level : 0 }, "fireblade"  : { level : 0 }, "firestaff" : { level : 0 }, "firebow" : { level : 0 } } } };
 
 setInterval(routine, 250);
 setInterval(buff_luck, 1000);
@@ -26,20 +27,27 @@ setInterval(cooperate, 1000);
 
 
 function cooperate() {
-    for (const name in Object.keys(cooperating)) {
+    for (const name of Object.keys(cooperating)) {
         let entity = get_entity(name);
         if (!entity || distance(character, entity) > 500) {
+            // game_log("too far to cooperate with " + name, colorShading);
             continue;
         }
+
+        // game_log("cooperating with " + name, colorGreen);
+
         let item = cooperating[name];
         if (item && item.items) {
-            for (const item_name in Object.keys(item.items)) {
+            for (const item_name of Object.keys(item.items)) {
                 let item_info = item.items[item_name];
                 if (item_info) {
-                    let item_index = get_leveled_item_index(item_name, item_info.level);
+                    let item_index = item_info.level == -1 ? locate_item(item_name) : get_leveled_item_index(item_name, item_info.level);
                     if (item_index == -1) {
                         continue;
                     }
+
+                    game_log("sending " + item_name + " to " + name, colorGreen);
+
                     send_item(name, item_index, character.items[item_index].q ? character.items[item_index].q : 1);
                 }
             }

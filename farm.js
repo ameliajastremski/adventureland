@@ -225,10 +225,10 @@ function routine() {
     let now = new Date();
     
     // if more than 1 minute since last cm then send
-    if (parent.party[merchant_name] && now - last_merchant_cm > 6000) {
+    if (parent.party[merchant_name] && now - last_merchant_cm > 6000 && (hpot_count < 9000 || mpot_count < 9000 || esize < 10 || gold > 1000000 || (character.s?.mluck?.ms ? character.s.mluck.ms : 0) < 600000)) {
         let msg = { "type" : "help", "esize": esize, "gold": gold, "hpot_count": hpot_count, "mpot_count": mpot_count, "mluck" : character?.s?.mluck?.ms ? character.s.mluck.ms : 0 };
         send_cm(merchant_name, msg);
-        party_say("help");
+        // party_say("help");
         last_merchant_cm = now;
         // game_log("sent CM to merchant: " + JSON.stringify(msg));
     
