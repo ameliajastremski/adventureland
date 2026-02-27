@@ -14,7 +14,7 @@ setInterval(use_temporal_orb, 1000);
 
 // let farm_monsters = ["osnake", "snake"];
 // let farm_monsters = ["rat"];
-let farm_monsters = ["squig", "squigtoad", "dragold", "pinkgoo"];
+let farm_monsters = ["squigtoad", "squig", "dragold", "pinkgoo"];
 let tank = "AWarrior";
 let merchant_name = 'AMerchant';
 let main_character_name = 'Ammage';
@@ -60,7 +60,7 @@ function routine_move() {
             let target = character.target ? get_entity(character.target) : null;
             if (!target || (target && target.mtype != mtype)) {
                 smart_move(event_monster).then(() => {
-                    let monster = get_nearest_monster({ mtype: mtype });
+                    let monster = get_nearest_monster({ type: mtype });
                     if (monster) {
                         change_target(monster);
                         smart_move(monster);
@@ -155,12 +155,25 @@ function routine_attack() {
         // }
 
         let target = get_targeted_monster();
+
+        if (target && is_grow_monster(target.mtype)) {
+            let monster = get_near_monster_type(target.mtype);
+            // if spawned monster has higher id than current target then switch to it (grow mechanics)
+            if (monster.id > target.id) {
+                change_target(monster);
+            }
+        }
         
         if (!target || (!farm_monsters.includes(target.mtype) && !target.target))
         {
             if (target) change_target(null);
 
-            monster = get_nearest_monster();
+            // monster = get_nearest_monster();
+            for (let mtype of farm_monsters) {
+                monster = get_near_monster_type(mtype);
+                if (monster && monster != {} && Object.keys(monster).length > 0) break;
+            }
+
             if (monster && (farm_monsters.includes(monster.mtype) || (monster.target && my_characters.includes(monster.target)))) {
                 change_target(monster);
             }
@@ -668,6 +681,10 @@ async function use_warrior_skills(target) {
         }
     }
 
+    if (distance(target, character) > character.range && !is_on_cooldown("charge")) {
+        use_skill('charge', target);
+    }
+
     if (can_cast(G.skills.warcry, character) && get_percent(character.mp, character.max_mp) > 10) {
         use_skill('warcry', character.name);
     }
@@ -843,7 +860,7 @@ async function use_ranger_skills(target) {
     }
 
     // 4fingers
-    if (can_cast(G.skills["4fingers"], target) && !is_oneshot_target(target)) {
+    if (can_cast(G.skills["4fingers"], target) && !is_oneshot_target(target) && (target.hp > character.attack * 4)) {
         // game_log("4fingers", colorGreen);
         use_skill('4fingers', target);
     }
@@ -851,33 +868,35 @@ async function use_ranger_skills(target) {
         // game_log("Cannot cast 4 Fingers", colorRed);
     }
 
-    // 5-shot NB! aoe
-    if (can_cast(G.skills["5shot"], target) && target.max_hp < (character.attack * 5)) {
-        var m_count = get_near_monsters_count();
-        var m_hl_count = get_near_hilevel_monsters_count();
-        if (target.level == 1 && !is_boss(target) && !is_hard_to_kill(target) && m_count >= 5 && m_hl_count < 1 && character.mp > 500 && get_percent(character.mp, character.max_mp) > 25) {
-            // game_log("5shot", colorGreen);
-            use_skill('5shot', target);
-        }
-    }
-    else {
-        // game_log("5shot != " + target.max_hp  + " target.max_hp", colorRed);
-    }
-
-    // 3-shot NB! aoe
-    if (can_cast(G.skills["3shot"], target) && target.max_hp < (character.attack * 3)) {
-        var m_count = get_near_monsters_count();
-        var m_hl_count = get_near_hilevel_monsters_count();
-        if (target.level == 1 && !is_boss(target) && !is_hard_to_kill(target) && m_count >= 3 && m_hl_count < 1 && character.mp > 500 && get_percent(character.mp, character.max_mp) > 25) {
-            // game_log("3shot", colorGreen);
-            use_skill("3shot", target);
+    if (!is_grow_monster(target.mtype) || !is_oneshot_target(target)) {
+        // 5-shot NB! aoe
+        if (can_cast(G.skills["5shot"], target) && target.max_hp < (character.attack * 5)) {
+            var m_count = get_near_monsters_count();
+            var m_hl_count = get_near_hilevel_monsters_count();
+            if (target.level == 1 && !is_boss(target) && !is_hard_to_kill(target) && m_count >= 5 && m_hl_count < 1 && character.mp > 500 && get_percent(character.mp, character.max_mp) > 25) {
+                // game_log("5shot", colorGreen);
+                use_skill('5shot', target);
+            }
         }
         else {
-            // game_log("3shot !!= " + m_count + " m_count " + m_hl_count + " m_hl_count", colorGreen);
+            // game_log("5shot != " + target.max_hp  + " target.max_hp", colorRed);
         }
-    }
-    else {
-        // game_log("3shot != " + target.max_hp  + " target.max_hp", colorRed);
+
+        // 3-shot NB! aoe
+        if (can_cast(G.skills["3shot"], target) && target.max_hp < (character.attack * 3)) {
+            var m_count = get_near_monsters_count();
+            var m_hl_count = get_near_hilevel_monsters_count();
+            if (target.level == 1 && !is_boss(target) && !is_hard_to_kill(target) && m_count >= 3 && m_hl_count < 1 && character.mp > 500 && get_percent(character.mp, character.max_mp) > 25) {
+                // game_log("3shot", colorGreen);
+                use_skill("3shot", target);
+            }
+            else {
+                // game_log("3shot !!= " + m_count + " m_count " + m_hl_count + " m_hl_count", colorGreen);
+            }
+        }
+        else {
+            // game_log("3shot != " + target.max_hp  + " target.max_hp", colorRed);
+        }
     }
 }
 
@@ -1088,7 +1107,7 @@ game.on("event", function (data) {
 let temporal_surge_monsters = ['squigtoad'];
 function use_temporal_orb() {
     let maps = ['main'];
-    if (!is_on_cooldown("temporalsurge")) {
+    if (!is_on_cooldown("temporalsurge") && character.mp >= G.skills.temporalsurge.mp) {
         // game_log("Checking temporal surge monsters around: " + temporal_surge_monsters.join(", "));
         for (let mtype of temporal_surge_monsters) {
             let farming_areas = get_farming_areas(mtype, maps);
@@ -1127,7 +1146,7 @@ function use_temporal_orb() {
             }
         }
     }
-    else if (is_on_cooldown("temporalsurge")) {
+    else {
         let orb_item = party_names[character.name].orb;
         if (!orb_item) return;
         let current_item = character.slots.orb;
@@ -1138,4 +1157,45 @@ function use_temporal_orb() {
             }
         }
     }
+}
+
+function is_grow_monster(mtype) {
+    for (let map_name of Object.keys(G.maps)) {
+        let map = G.maps[map_name];
+		if (!map.monsters) continue;
+        let monsters = map.monsters.filter(m => m.type === mtype);
+        if (monsters.length > 0 && monsters[0].grow) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function get_near_monster_type(mtype) {
+    var result = {};
+    var results = [];
+    for (id in parent.entities) {
+        var entity = parent.entities[id];
+        if (entity.mtype != null && mtype == entity.mtype && parent.G.monsters[entity.mtype]) {
+            result[id] = entity;
+            results.push(entity);
+        }
+    }
+
+    if (results.length > 0) {
+        if (is_grow_monster(mtype)) {
+            results.sort((a, b) => b.id - a.id);
+            return results[0];
+        }
+        else {
+            results.sort((a, b) => {
+                let distA = distance(a, character);
+                let distB = distance(b, character);
+                return distA - distB;
+            });
+            return results[0];
+        }
+    }
+
+    return result;
 }
