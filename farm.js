@@ -5,23 +5,50 @@ const colorNavy = "#1C222B";
 const colorRed = "#FF0000";
 
 const event_monsters = [ "wabbit", "mrpumpkin", "mrgreen", "grinch", "dragold" ];
+let cooperating = { 'HexNeo' : { bosses : ["phoenix"] } };
 
 setInterval(routine_move, 250);
 setInterval(routine_attack, 250);
 setInterval(routine, 250);
 setInterval(loot_chests, 2000);
 setInterval(use_temporal_orb, 1000);
+setInterval(check_bosses, 1000);
+
+function check_bosses() {
+    if (game.graphics) {
+        for (let cooperating_name in cooperating) {
+            let cooperating_info = cooperating[cooperating_name];
+            if (cooperating_info && cooperating_info.bosses) {
+                for (let boss_name of cooperating_info.bosses) {
+                    let boss_entity = get_nearest_monster({ type : boss_name });
+                    if (boss_entity) {
+                        game_log("cooperating > " + cooperating_name + " > boss " + boss_name + " found, sending CM");
+                        send_cm(cooperating_name, { message: "target", target: boss_entity });
+                    }
+                }
+            }
+        }
+    }
+}
 
 // let farm_monsters = ["osnake", "snake"];
 // let farm_monsters = ["rat"];
-let farm_monsters = ["squigtoad", "squig", "dragold", "pinkgoo"];
+let farm_monsters = ["squigtoad", "squig", "dragold"];
 let tank = "AWarrior";
 let merchant_name = 'AMerchant';
-let main_character_name = 'Ammage';
+let main_character_name = 'ARogue';
+// one account runs 3 fighters and 1 merchant : ARogue (main) + AWarrior + AmRanger + AMerchant
 let my_characters = [merchant_name, "AWarrior", "AmRanger"];
-var party_names = { 'Ammage' : { orb : { name : "orbofint", level : 1 } }, 'AmRanger' : { orb : { name : "orbofdex", level : 1 }, mainhand : { name : "bowoffire", level : 9 }, mainhandheal : { name : "cupid", level : 6 } }, 'AWarrior' : { orb : { name : "orbofstr", level : 3 } } };
-let items_not_for_merchant = ["orbofint", "orbofstr", "hpot1", "mpot1", "tracker", "goldbooster", "luckbooster", "xpbooster", "handofmidas", "snowball", "wgloves", "orboftemporal"];
-let sell_items = ["slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes", "wcap"];
+// a party holds only 1 merchant and 9 fighters, and the cooperating party already has its own
+// merchant (HexMer), so only our fighters join it : our merchant always stays out of any party
+let party_leaders = [main_character_name, "HexMer", "HexNeo"];
+// the party we want to fight in. HexMer owns it so he is the one to ask, HexNeo is the backup.
+// our own party is only the fallback for when neither is around, and it must never pull a
+// fighter back out of their party
+let cooperating_party_leaders = ["HexMer", "HexNeo"];
+var party_names = { 'ARogue' : { orb : { name : "orbofdex", level : 1 } }, 'Ammage' : { orb : { name : "orbofint", level : 1 } }, 'AmRanger' : { orb : { name : "orbofdex", level : 1 }, mainhand : { name : "bowoffire", level : 9 }, mainhandheal : { name : "cupid", level : 6 } }, 'AWarrior' : { orb : { name : "orbofstr", level : 3 } } };
+let items_not_for_merchant = ["orbofint", "orbofstr", "hpot1", "mpot1", "tracker", "goldbooster", "luckbooster", "xpbooster", "handofmidas", "snowball", "orboftemporal"];
+let sell_items = ["slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes", "wcap", "wgloves"];
 
 let fancypots_position = G.maps.main.npcs.filter(npc => npc.id == "fancypots")[0].position;
 let fancypots = { x: fancypots_position[0], y: fancypots_position[1] };
@@ -30,11 +57,11 @@ let show_game_log = false;
 
 let last_respawn = new Date();
 
-let loot_character = "Ammage";
+let loot_character = "ARogue";
 let is_looting_chests = false;
 let loot_chests_timer = null;
 let loot_amount = 70;
-let loot_items = { gloves : { loot : { name :"handofmidas", level : 5 }, wear : { name :"wgloves", level : 8 } } };
+let loot_items = { gloves : { loot : { name :"handofmidas", level : 7 }, wear : { name :"wgloves", level : 8 } } };
 
 start();
 
@@ -42,9 +69,17 @@ function start() {
     if (game.graphics) {
         load_code('metrics');
     }
+
+    // anniversary event : kiss.js runs its own visit loop and adds the Kiss button.
+    // It parks the farming loops through is_kissing() while it walks to the
+    // featured player, and it works headless too, so it loads either way
+    load_code('kiss');
 }
 
 function routine_move() {
+    // kiss.js is driving the character to the featured player, stay off the controls
+    if (typeof is_kissing == "function" && is_kissing()) return;
+
     check_holiday_spirit();
 
     if (is_moving(character) || is_transporting(character) || (smart.moving && smart.searching && !smart.found)) {
@@ -145,6 +180,9 @@ function get_farming_area() {
 }
 
 function routine_attack() {
+    // no fighting while kiss.js walks us across the map for an anniversary visit
+    if (typeof is_kissing == "function" && is_kissing()) return;
+
  if (character.rip) {
         return;
     }
@@ -164,6 +202,21 @@ function routine_attack() {
             }
         }
         
+
+        // squigtoad first : while killing a lower priority farm monster, switch over as soon as a
+        // higher priority one is around again. event monsters keep the target they were sent to
+        if (target && farm_monsters.includes(target.mtype) && !event_monsters.includes(target.mtype)) {
+            for (let mtype of farm_monsters) {
+                if (mtype == target.mtype) break;
+                let better = get_near_monster_type(mtype);
+                if (better && Object.keys(better).length > 0) {
+                    change_target(better);
+                    target = get_targeted_monster();
+                    break;
+                }
+            }
+        }
+
         if (!target || (!farm_monsters.includes(target.mtype) && !target.target))
         {
             if (target) change_target(null);
@@ -214,18 +267,17 @@ function routine() {
         check_online();
     }
 
-    // if merchant is near then send all items and gold to merchant
-    let merchant = get_entity(merchant_name);
-    if (parent.party[merchant_name] && merchant && distance(character, merchant) < 300) {
-        // send all items to merchant
-        for (i = 0; i < 42; i++) {
-            let item = character.items[i];
-            if (item && !items_not_for_merchant.includes(item.name) && !is_loot_item(item)) {
-                send_item(merchant_name, i, item.q ? item.q : 1);
-            }
-        }
+    // every fighter asks its way into the cooperating party on its own
+    check_party();
 
-        if (character.gold > 100000) {
+    // hand the farmed items over to whoever is near : our own merchant first, then a cooperating
+    // party leader. the merchant is out of the party now, so we only check that he is nearby
+    let receiver = get_item_receiver();
+    if (receiver) {
+        send_farmed_items(receiver);
+
+        // only our own merchant gets the gold
+        if (receiver == merchant_name && character.gold > 100000) {
             send_gold(merchant_name, character.gold);
         }
     }
@@ -238,8 +290,9 @@ function routine() {
     let now = new Date();
     
     // if more than 1 minute since last cm then send
-    if (parent.party[merchant_name] && now - last_merchant_cm > 6000 && (hpot_count < 9000 || mpot_count < 9000 || esize < 10 || gold > 1000000 || (character.s?.mluck?.ms ? character.s.mluck.ms : 0) < 600000)) {
-        let msg = { "type" : "help", "esize": esize, "gold": gold, "hpot_count": hpot_count, "mpot_count": mpot_count, "mluck" : character?.s?.mluck?.ms ? character.s.mluck.ms : 0 };
+    if (now - last_merchant_cm > 6000 && (hpot_count < 9000 || mpot_count < 9000 || esize < 10 || gold > 1000000 || (character.s?.mluck?.ms ? character.s.mluck.ms : 0) < 600000)) {
+        // the merchant is out of the party, he cannot read our position from parent.party, so send it along
+        let msg = { "type" : "help", "esize": esize, "gold": gold, "hpot_count": hpot_count, "mpot_count": mpot_count, "mluck" : character?.s?.mluck?.ms ? character.s.mluck.ms : 0, "map": character.map, "in": character.in, "x": character.x, "y": character.y };
         send_cm(merchant_name, msg);
         // party_say("help");
         last_merchant_cm = now;
@@ -255,7 +308,7 @@ function routine() {
     if (character.map == "main" && distance(character, fancypots) < 200) {
         for (let i = 0; i < 42; i++) {
             let item = character.items[i];
-            if (item && sell_items.includes(item.name) && !is_loot_item(item)) {
+            if (item && sell_items.includes(item.name) && (!item.level || item.level == 0) && !is_loot_item(item)) {
                 game_log("near fancy pots > selling " + item.name);
                 sell(i, 1);
             }
@@ -279,16 +332,71 @@ function routine() {
     // }
 
     // send items to party mage if not mage
-    if (character.ctype != "mage" && is_party_mage_nearby()) {
+    if (character.ctype != "mage" && is_party_mage_nearby() && can_receive_items(get_party_mage_name())) {
+        let mage_name = get_party_mage_name();
         for (let i = 0; i < 42; i++) {
             let item = character.items[i];
-            if (item && sell_items.includes(item.name) && !is_loot_item(item)) {
-                send_item(get_party_mage_name(), i, item.q ? item.q : 1);
+            if (item && sell_items.includes(item.name) && (!item.level || item.level == 0) && !is_loot_item(item)) {
+                last_send_target = mage_name;
+                send_item(mage_name, i, item.q ? item.q : 1);
             }
         }
     }
     
     merge_inventory_items();
+}
+
+// a receiver whose inventory is full answers with a "no space" game response. remember that and
+// leave him alone for a while instead of hammering him with sends every tick
+const no_space_wait = 10000;
+let no_space_until = {};
+let last_send_target = null;
+
+function can_receive_items(name) {
+    return !no_space_until[name] || Date.now() > no_space_until[name];
+}
+
+function on_game_response(data) {
+    let response = typeof data == "string" ? data : (data ? data.response : null);
+    if (!response || !("" + response).toLowerCase().includes("space")) {
+        return;
+    }
+
+    // the response does not always name the receiver, fall back to whoever we sent to last
+    let name = (data && data.name) ? data.name : last_send_target;
+    if (!name) {
+        return;
+    }
+
+    no_space_until[name] = Date.now() + no_space_wait;
+    game_log(name + " has no space [" + response + "], waiting " + (no_space_wait / 1000) + "s", colorShading);
+}
+
+// our own merchant first, he is the one who banks and sells for us, then a cooperating party
+// leader. only one receiver per tick, an item can only be handed over once
+function get_item_receiver() {
+    for (let name of [merchant_name].concat(cooperating_party_leaders)) {
+        if (name == character.name || !can_receive_items(name)) {
+            continue;
+        }
+
+        let entity = get_entity(name);
+        if (entity && distance(character, entity) < 300) {
+            return name;
+        }
+    }
+
+    return null;
+}
+
+function send_farmed_items(name) {
+    for (let i = 0; i < 42; i++) {
+        let item = character.items[i];
+        if (item && !items_not_for_merchant.includes(item.name) && (!item.level || item.level == 0) && !is_loot_item(item)) {
+            last_send_target = name;
+            send_item(name, i, item.q ? item.q : 1);
+        }
+    }
 }
 
 function is_loot_item(item) {
@@ -327,37 +435,74 @@ function regen() {
     }
 }
 
+let last_party_request = 0;
+
+// ask HexMer, then HexNeo, to take us into their party. a request works by name so it does not
+// matter that HexMer stands in town while we farm, and the merchant never runs this code
+function check_party() {
+    // already in a cooperating party, nothing to ask for
+    if (cooperating_party_leaders.includes(character.party)) {
+        return;
+    }
+
+    if (Date.now() - last_party_request < 10000) {
+        return;
+    }
+    last_party_request = Date.now();
+
+    for (let leader of cooperating_party_leaders) {
+        if (leader == character.name) {
+            continue;
+        }
+
+        game_log("requesting to join " + leader + "'s party", colorGreen);
+        send_party_request(leader);
+    }
+}
+
+let last_party_invite = 0;
+
+// true while we are on our own : either in no party at all, or leading the fallback party.
+// false once HexMer or HexNeo has taken us into their party as a guest
+function leads_own_party() {
+    return !character.party || character.party == character.name;
+}
+
 function check_online() {
     if (!character.controller) {
         let active_characters = get_active_characters();
-        
-        for (let party_name of my_characters) {
-            if (party_name !== character.name) {
+
+        for (let my_name of my_characters) {
+            if (my_name !== character.name) {
                 let character_active = false;
                 for (let character_name in active_characters) {
-                    if (party_name == character_name) {
+                    if (my_name == character_name) {
                         character_active = true;
                     }
                 }
 
                 if (!character_active) {
-                    if (party_name != merchant_name) {
-                        start_character(party_name, 'farm');
+                    if (my_name != merchant_name) {
+                        start_character(my_name, 'farm');
                     }
                     else {
-                        start_character(party_name, 'merchant');
+                        start_character(my_name, 'merchant');
                     }
                 }
-                else {
-                    // invite all my characters if not in party
-                    if (!parent.party[party_name]) {
-                        send_party_invite(party_name);
+                else if (my_name != merchant_name && leads_own_party()) {
+                    // invite my fighters if not in party, the merchant stays out of the party.
+                    // while we are guests in the cooperating party we invite nobody, our invites
+                    // would drag our fighters back out of it
+                    if (!parent.party[my_name] && Date.now() - last_party_invite > 10000) {
+                        last_party_invite = Date.now();
+                        send_party_invite(my_name);
                     }
                 }
             }
         }
     }
 }
+
 
 function check_rip() {
     if (character.rip) {
@@ -391,9 +536,26 @@ function inventory_item_count(item_name) {
 
 function on_party_invite(name) // called by the inviter's name
 {
-    if (name == main_character_name || name == "HexMer" || name == "HexNeo") {
-	    accept_party_invite(name);
+    if (!party_leaders.includes(name)) {
+        return;
     }
+
+    // already fighting in the cooperating party : ignore our own party, otherwise the main
+    // character keeps inviting us back out of it and we never stay in their party
+    if (cooperating_party_leaders.includes(character.party) && !cooperating_party_leaders.includes(name)) {
+        return;
+    }
+
+    // cannot be in two parties : leave ours first, the accept only lands once the server
+    // has processed the leave, so give it a moment
+    if (character.party && character.party != name) {
+        game_log("leaving " + character.party + "'s party to join " + name, colorGreen);
+        leave_party();
+        setTimeout(() => accept_party_invite(name), 500);
+        return;
+    }
+
+    accept_party_invite(name);
 }
 
 function sleep(time) {
@@ -462,8 +624,8 @@ function loot_chests() {
                                 // making 50 chest a time to avoid disconnect
                                 loot_some_chests();
 
-                                game_log("looted switching back to luckbooster");
-                                shift(booster, 'luckbooster');
+                                game_log("looted switching back to xpbooster");
+                                shift(booster, 'xpbooster');
                                 let wear_gloves = loot_items.gloves.wear;
                                 if (wear_gloves && wear_gloves.name) {
                                     let index = get_leveled_item_index(wear_gloves.name, wear_gloves.level);
@@ -479,8 +641,8 @@ function loot_chests() {
                             // Object.keys(parent.chests)
                             loot_some_chests();
 
-                            game_log("looted switching back to luckbooster");
-                            shift(booster, 'luckbooster');
+                            game_log("looted switching back to xpbooster");
+                            shift(booster, 'xpbooster');
                             let wear_gloves = loot_items.gloves.wear;
                             if (wear_gloves && wear_gloves.name) {
                                 let index = get_leveled_item_index(wear_gloves.name, wear_gloves.level);
@@ -820,6 +982,62 @@ async function use_mage_skills(target) {
     }
 }
 
+async function use_rogue_skills(target) {
+    // rspeed : 320 range, 45 minutes of extra speed, keep ourselves and then the party covered
+    if (!character.s.rspeed && can_cast(G.skills.rspeed, character)) {
+        use_skill("rspeed", character.name);
+    }
+    else {
+        for (let party_member of get_party_members()) {
+            let player = get_player(party_member.name);
+            if (player && (!player.s || !player.s.rspeed) && can_cast(G.skills.rspeed, player)) {
+                use_skill("rspeed", player.name);
+                break;
+            }
+        }
+    }
+
+    // pcoat : poisons everything we hit for 7s, a poison sack is worth it only on a monster that lives
+    if (!character.s.poisonous && quantity("poison") > 0 && !is_oneshot_target(target) && can_cast(G.skills.pcoat, character)) {
+        use_skill("pcoat");
+    }
+
+    // mentalburst : magical blow, the damage comes back as mana when it is the killing blow
+    let mentalburst_damage = get_mentalburst_damage();
+    if (can_cast(G.skills.mentalburst, target) && (target.hp <= mentalburst_damage || get_percent(character.mp, character.max_mp) > 75)) {
+        use_skill("mentalburst", target);
+    }
+
+    // fanofknives NB! aoe, needs a knifebelt and it takes the place of a normal attack
+    if (character.slots["belt"] && character.slots["belt"].name == "knifebelt" && target.max_hp < (character.attack * 3)) {
+        var m_count = get_near_monsters_count();
+        var m_hl_count = get_near_hilevel_monsters_count();
+        if (target.level == 1 && !is_boss(target) && !is_hard_to_kill(target) && m_count >= 3 && m_hl_count < 1 && can_cast(G.skills.fanofknives, target) && get_percent(character.mp, character.max_mp) > 25) {
+            use_skill("fanofknives");
+        }
+    }
+
+    // quickstab / quickpunch : 250ms fillers between attacks, they share one cooldown so only
+    // the one matching the weapon in our hand can go out
+    let wtype = get_mainhand_wtype();
+    if (wtype == "dagger" && can_cast(G.skills.quickstab, target) && get_percent(character.mp, character.max_mp) > 25) {
+        use_skill("quickstab", target);
+    }
+    else if (wtype == "fist" && can_cast(G.skills.quickpunch, target) && get_percent(character.mp, character.max_mp) > 25) {
+        use_skill("quickpunch", target);
+    }
+}
+
+function get_mentalburst_damage() {
+    return 0.6 * character.attack;
+}
+
+function get_mainhand_wtype() {
+    let mainhand = character.slots["mainhand"];
+    if (!mainhand || !mainhand.name || !parent.G.items[mainhand.name]) return null;
+    return parent.G.items[mainhand.name].wtype;
+}
+
 async function use_ranger_skills(target) {
     // game_log("Using ranger skills on " + target.mtype);
     // huntersmark
@@ -1124,7 +1342,7 @@ function use_temporal_orb() {
                         if (!is_on_cooldown("temporalsurge")) {
                             // game_log("Using temporal surge for faster respawn");
                             let current_item = character.slots.orb;
-                            let orb_item = party_names[character.name].orb;
+                            let orb_item = party_names[character.name]?.orb;
                             let index = locate_item("orboftemporal");
 
                             if (index == -1 && (current_item && current_item.name != "orboftemporal")) return;
@@ -1135,7 +1353,7 @@ function use_temporal_orb() {
 
                             use_skill("temporalsurge");
 
-                            let equip_index = locate_item(orb_item.name);
+                            let equip_index = orb_item ? locate_item(orb_item.name) : -1;
 
                             if (equip_index != -1) {
                                 equip(equip_index, "orb");
@@ -1147,7 +1365,7 @@ function use_temporal_orb() {
         }
     }
     else {
-        let orb_item = party_names[character.name].orb;
+        let orb_item = party_names[character.name]?.orb;
         if (!orb_item) return;
         let current_item = character.slots.orb;
         if (!current_item || current_item.name != orb_item.name) {

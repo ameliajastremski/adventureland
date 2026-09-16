@@ -1,6 +1,6 @@
 // send all items to merchant
-for (i = 0; i < 40; i++) {
-	send_item('AMerchant', i, 100);	
+for (i = 0; i < 20; i++) {
+	send_item('HexMer', i, 9999);	
 }
 
 // go to mage
@@ -39,7 +39,17 @@ for (let i = 0; i < 28; i++) {
     if (item) send_item('HexMer', i, item.q ? item.q : 1);
 }
 
+for (let i = 0; i < 14; i++) {
+    let item = character.items[i];
+    if (item) send_item('HexMer', i, item.q ? item.q : 1);
+}
+
 for (let i = 0; i < 28; i++) {
     let item = character.items[i];
     if (item) send_item('HexNeo', i, item.q ? item.q : 1);
+}
+
+for (let i = 0; i < 28; i++) {
+    let item = character.items[i];
+    if (item) send_item('ivarim', i, item.q ? item.q : 1);
 }

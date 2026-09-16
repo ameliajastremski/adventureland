@@ -5,18 +5,21 @@ const colorNavy = "#1C222B";
 const colorRed = "#FF0000";
 
 // , "wbreeches", "wattire", "wshoes",  "wcap", "wgloves"
-let bank_items = ["cupid", "snakefang", "brownenvelope", "frogt", "pstem", "ink", "snakeoil", "seashell", "essenceoffire", "goldenegg", "candypop", "seashell", "firebow", "ornament", "mistletoe", "candy0", "candy1", "candycane", "poison", "gslime", "beewings", "funtoken", "feather0", "gem0", "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8"];
-let sell_items = ["intamulet", "dexamulet", "stramulet", "crabclaw", "vitscroll", "slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes", "wcap", "cclaw", "vitearring", "rattail"];
+let bank_items = ["cupid", "snakefang", "brownenvelope", "frogt", "pstem", "ink", "snakeoil", "seashell", "essenceoffire", "goldenegg", "candypop", "seashell", "ornament", "mistletoe", "candy0", "candy1", "candycane", "poison", "gslime", "beewings", "funtoken", "feather0", "gem0", "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8"];
+let sell_items = ["wgloves", "intamulet", "dexamulet", "stramulet", "crabclaw", "vitscroll", "slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes", "wcap", "cclaw", "vitearring", "rattail"];
 // ,  "lostearring"
 let compound_items = ["intearring", "dexearring", "strearring"];
 let main_character_name = 'Ammage';
+// the fighters of our account : they join the cooperating party, this merchant never does
+// (a party holds only 1 merchant and 9 fighters, and the cooperating party has its own merchant)
+let my_characters = [main_character_name, "AWarrior", "AmRanger"];
 let fancypots_position = G.maps.main.npcs.filter(npc => npc.id == "fancypots")[0].position;
 let fancypots = {x: fancypots_position[0], y: fancypots_position[1]};
 // let merchant_stand_place = { x: -21, y: -313, map: "mansion" };
 let merchant_stand_place = { x: 10, y: 10, map: "main" };
 let help_queue = [];
 let last_respawn = new Date();
-let cooperating = { 'HexMer' : { items : {"intearring": { level : -1 }, "dexearring": { level : -1 }, "strearring": { level : -1 } }  }, 'HexNeo' : { items : { "xmace" : { level : 0 }, "fireblade"  : { level : 0 }, "firestaff" : { level : 0 }, "firebow" : { level : 0 } } } };
+let cooperating = { 'HexMer' : { items : {"offeringp": { level : -1 }, "intearring": { level : -1 }, "dexearring": { level : -1 }, "strearring": { level : -1 }, "intring": { level : -1 }, "vitring": { level : -1 }, "strring": { level : -1 }, "dexring": { level : -1 } }  }, 'HexNeo' : { items : { "shield" : { level : 0 }, "mcape" : { level : 0 }, "xmace" : { level : 0 }, "fireblade"  : { level : 0 }, "firestaff" : { level : 0 }, "firebow" : { level : 0 }, "ololipop" : { level : 0 }, "intring" : { level : -1 }, "vitring" : { level : -1 }, "strring" : { level : -1 }, "dexring" : { level : -1 } } } };
 
 setInterval(routine, 250);
 setInterval(buff_luck, 1000);
@@ -25,12 +28,46 @@ setInterval(buy_pots, 250);
 setInterval(merge_inventory_items, 5000);
 setInterval(cooperate, 1000);
 
+// anniversary event : kiss.js runs its own visit loop and adds the Kiss button. The
+// merchant runs this file instead of farm.js, so it needs its own load to take part
+load_code('kiss');
+
+
+// a receiver whose inventory is full answers with a "no space" game response. remember that and
+// leave him alone for a while instead of hammering him with sends every second
+const no_space_wait = 10000;
+let no_space_until = {};
+let last_send_target = null;
+
+function can_receive_items(name) {
+    return !no_space_until[name] || Date.now() > no_space_until[name];
+}
+
+function on_game_response(data) {
+    let response = typeof data == "string" ? data : (data ? data.response : null);
+    if (!response || !("" + response).toLowerCase().includes("space")) {
+        return;
+    }
+
+    // the response does not always name the receiver, fall back to whoever we sent to last
+    let name = (data && data.name) ? data.name : last_send_target;
+    if (!name) {
+        return;
+    }
+
+    no_space_until[name] = Date.now() + no_space_wait;
+    game_log(name + " has no space [" + response + "], waiting " + (no_space_wait / 1000) + "s", colorShading);
+}
 
 function cooperate() {
     for (const name of Object.keys(cooperating)) {
         let entity = get_entity(name);
         if (!entity || distance(character, entity) > 500) {
             // game_log("too far to cooperate with " + name, colorShading);
+            continue;
+        }
+
+        if (!can_receive_items(name)) {
             continue;
         }
 
@@ -48,6 +85,7 @@ function cooperate() {
 
                     game_log("sending " + item_name + " to " + name, colorGreen);
 
+                    last_send_target = name;
                     send_item(name, item_index, character.items[item_index].q ? character.items[item_index].q : 1);
                 }
             }
@@ -56,6 +94,9 @@ function cooperate() {
 }
 
 function routine() {
+    // kiss.js is walking us to the featured player, leave the stand and the moving alone
+    if (typeof is_kissing == "function" && is_kissing()) return;
+
     if (character.rip) {
         check_rip();
         return;
@@ -393,20 +434,16 @@ function get_scroll_index(item_index) {
     return -1;
 }
 
+// a party holds only 1 merchant and 9 fighters : the cooperating party's merchant takes that slot,
+// so this merchant stays out of every party and keeps serving our fighters from the outside
 function on_party_invite(name) // called by the inviter's name
 {
-    game_log("Party request from " + name);
-    if (name == main_character_name) {
-	    accept_party_invite(name);
-    }
+    game_log("Party invite from " + name + " > ignored, merchant stays out of party", colorShading);
 }
 
 function on_party_request(name) // called by the inviter's name - request = someone requesting to join your existing party
 {
-    game_log("Party request from " + name);
-	if (name == main_character_name) {
-	    accept_party_invite(name);
-    }
+    game_log("Party request from " + name + " > ignored, merchant stays out of party", colorShading);
 }
 
 function has_item(item_name) {
@@ -486,7 +523,8 @@ function get_inventory_item_indexes(item_name, level) {
 
 function on_cm(name, data)
 {
-    if (parent.party[name] == null) return;
+    // we are not in a party anymore, so trust our own characters instead of parent.party
+    if (!my_characters.includes(name)) return;
 
     if (data.type == "help") {
         help_queue[name] = { timestamp: Date.now(), data: data, on_the_way: false };
@@ -542,6 +580,10 @@ function help() {
         else {
             // nearby lets help
             if (help_entity && distance(character, help_entity) < 300) {
+                if (!can_receive_items(name)) {
+                    continue;
+                }
+
                 let hpot_to_send = 9999 - help_request.data.hpot_count;
                 let mpot_to_send = 9999 - help_request.data.mpot_count;
 
@@ -549,14 +591,24 @@ function help() {
                 let mpot_index = locate_item("mpot1");
 
                 delete help_queue[name];
+                last_send_target = name;
                 send_item(name, hpot_index, hpot_to_send);
                 send_item(name, mpot_index, mpot_to_send);
                 delete help_queue[name];
                 continue;
             }
             else {
-                help_queue[name].on_the_way = true;
-                smart_move(parent.party[name]);
+                // the help CM carries the position, parent.party is empty for a merchant out of party
+                // a visible entity is on our own map, otherwise use the position from the help request
+                let help_position = help_entity ? { map: character.map, x: help_entity.x, y: help_entity.y } : help_request.data;
+                if (help_position && help_position.map) {
+                    help_queue[name].on_the_way = true;
+                    smart_move({ map: help_position.map, x: help_position.x, y: help_position.y });
+                }
+                else {
+                    game_log("no position to help " + name, colorRed);
+                    delete help_queue[name];
+                }
             }
 
 
@@ -610,4 +662,4 @@ function check_rip() {
         }
         return;
     }
-}
+}
