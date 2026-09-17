@@ -20,7 +20,7 @@
 //        node deployment-api.js           uploads what changed
 //   5. Uploading does not restart anything, restart the characters afterwards
 //      so that they pick up the new code.
-//
+//   $env:PATH += ';C:\Program Files\nodejs\'
 // Engine side : mcp_api.js, app.post("/mcp_api/:method"). Writing methods are
 // limited to 30 calls per minute with a burst of 10, request body up to 5 MB.
 
@@ -37,6 +37,7 @@ const FILES = {
     1: { file: "farm.js", name: "farm" },
     2: { file: "merchant.js", name: "merchant" },
     3: { file: "kiss.js", name: "kiss" },
+    4: { file: "tinyp.js", name: "tinyp" },
     7: { file: "metrics.js", name: "metrics" },
 };
 

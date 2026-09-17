@@ -70,6 +70,12 @@ function start() {
         load_code('metrics');
     }
 
+    // Fairy helper : tinyp.js takes the character over when HexNeo magiports us onto the
+    // Fairy, holds fire until the dampening field is up and HexPri has the aggro, and hands
+    // the character back when the fight is over. It works headless too, so it always loads
+    // the Fairy is farmed, tinyp.js is not needed for now
+    // load_code('tinyp');
+
     // anniversary event : kiss.js runs its own visit loop and adds the Kiss button.
     // It parks the farming loops through is_kissing() while it walks to the
     // featured player, and it works headless too, so it loads either way
@@ -79,6 +85,9 @@ function start() {
 function routine_move() {
     // kiss.js is driving the character to the featured player, stay off the controls
     if (typeof is_kissing == "function" && is_kissing()) return;
+
+    // a Fairy is in sight : tinyp.js owns the position, no farm walks, no town, no kiting
+    if (typeof is_tinyp_farming == "function" && is_tinyp_farming()) return;
 
     check_holiday_spirit();
 
@@ -182,6 +191,11 @@ function get_farming_area() {
 function routine_attack() {
     // no fighting while kiss.js walks us across the map for an anniversary visit
     if (typeof is_kissing == "function" && is_kissing()) return;
+
+    // tinyp.js fires on its own volley timer : the Fairy heals 1200 hp back on every server
+    // tick, so an attack that does not land with the rest of the party is worse than none,
+    // and a send without a dampening field teleports the Fairy away for everyone
+    if (typeof is_tinyp_farming == "function" && is_tinyp_farming()) return;
 
  if (character.rip) {
         return;
@@ -1285,6 +1299,10 @@ function get_near_monster_type_count(mtype) {
 }
 
 game.on("event", function (data) {
+    // an event boss is not worth walking away from a Fairy for : these branches smart_move
+    // and even use_skill('town'), both of which would drop us out of the fight
+    if (typeof is_tinyp_farming == "function" && is_tinyp_farming()) return;
+
     // has_buff > character.s["easterluck"]
     if (data.name == "wabbit" && !has_buff(character, "easterluck")) {
         let wabbit = parent.S.wabbit;

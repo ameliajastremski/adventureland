@@ -9,7 +9,7 @@ let bank_items = ["cupid", "snakefang", "brownenvelope", "frogt", "pstem", "ink"
 let sell_items = ["wgloves", "intamulet", "dexamulet", "stramulet", "crabclaw", "vitscroll", "slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes", "wcap", "cclaw", "vitearring", "rattail"];
 // ,  "lostearring"
 let compound_items = ["intearring", "dexearring", "strearring"];
-let main_character_name = 'Ammage';
+let main_character_name = 'ARogue';
 // the fighters of our account : they join the cooperating party, this merchant never does
 // (a party holds only 1 merchant and 9 fighters, and the cooperating party has its own merchant)
 let my_characters = [main_character_name, "AWarrior", "AmRanger"];
