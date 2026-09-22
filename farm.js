@@ -13,6 +13,7 @@ setInterval(routine, 250);
 setInterval(loot_chests, 2000);
 setInterval(use_temporal_orb, 1000);
 setInterval(check_bosses, 1000);
+setInterval(check_rspeed, 1000);
 
 function check_bosses() {
     if (game.graphics) {
@@ -33,8 +34,13 @@ function check_bosses() {
 
 // let farm_monsters = ["osnake", "snake"];
 // let farm_monsters = ["rat"];
-let farm_monsters = ["squigtoad", "squig", "dragold"];
+// let farm_monsters = ["squigtoad", "squig", "dragold"];
+let farm_monsters = ["croc", "dragold"];
 let tank = "AWarrior";
+// characters that farm from one spot instead of walking after their target. A ranger outranges
+// the croc pack : 201 range from the centre of [696,1498,906,1922] reaches it, and a croc moves
+// at 10, so the pack walks into us. Standing still removes the travel time entirely.
+let stationary_characters = ["AmRanger"];
 let merchant_name = 'AMerchant';
 let main_character_name = 'ARogue';
 // one account runs 3 fighters and 1 merchant : ARogue (main) + AWarrior + AmRanger + AMerchant
@@ -68,6 +74,11 @@ start();
 function start() {
     if (game.graphics) {
         load_code('metrics');
+
+        // account dump : dump.js adds the Dump button and collects everything the client
+        // knows about every running character as JSON. It only draws in the UI client, the
+        // collector itself stays reachable as dump_collect() once the slot is up
+        load_code('dump');
     }
 
     // Fairy helper : tinyp.js takes the character over when HexNeo magiports us onto the
@@ -126,7 +137,18 @@ function routine_move() {
         game_log("stop");
     }
 
-    if (!character.moving && !smart.moving) {  
+    if (!character.moving && !smart.moving) {
+        // a stationary character walks to the centre of the pack once and then stays there.
+        // Chasing whatever spawned last across a 210x424 rectangle is what used to cost the
+        // melee ~46-49% of their time, and a ranger never has to move at all
+        if (holds_position()) {
+            let anchor = get_farming_area();
+            if (anchor && (character.map != anchor.map || distance(character, anchor) > 20)) {
+                smart_move({ map: anchor.map, x: anchor.x, y: anchor.y });
+            }
+            return;
+        }
+
         if ((target && !farm_monsters.includes(target.mtype)) || (get_near_mtypes_monsters_count(farm_monsters) == 0 && !target)) {
             let farm_area = get_farming_area();
             if (farm_area) {
@@ -188,7 +210,7 @@ function get_farming_area() {
     }
 }
 
-function routine_attack() {
+async function routine_attack() {
     // no fighting while kiss.js walks us across the map for an anniversary visit
     if (typeof is_kissing == "function" && is_kissing()) return;
 
@@ -208,16 +230,21 @@ function routine_attack() {
 
         let target = get_targeted_monster();
 
-        if (target && is_grow_monster(target.mtype)) {
+        // croc is a grow pack and a croc respawns 25 ms after each kill, so the highest entity id
+        // is always a fresh, full hp croc. Switching to it made the whole group dump into the same
+        // target while damaged crocs stood around, and it walked the melee across the pack for
+        // nothing. Hold the target until it is spent, then take the nearest one that still has hp
+        // left after the damage already in flight
+        if (target && get_effective_hp(target) <= 0) {
             let monster = get_near_monster_type(target.mtype);
-            // if spawned monster has higher id than current target then switch to it (grow mechanics)
-            if (monster.id > target.id) {
+            if (monster && monster.id && monster.id != target.id) {
                 change_target(monster);
+                target = get_targeted_monster();
             }
         }
         
 
-        // squigtoad first : while killing a lower priority farm monster, switch over as soon as a
+        // croc first : while killing a lower priority farm monster, switch over as soon as a
         // higher priority one is around again. event monsters keep the target they were sent to
         if (target && farm_monsters.includes(target.mtype) && !event_monsters.includes(target.mtype)) {
             for (let mtype of farm_monsters) {
@@ -256,9 +283,10 @@ function routine_attack() {
         if (is_in_range(target) && can_attack(target))
         {
             // game_log("use skills", colorGreen);
-			use_skills(target);
-            if (target.hp > 0) {
+			let took_attack_slot = await use_skills(target);
+            if (!took_attack_slot && get_effective_hp(target) > 0) {
                 attack(target);
+                register_damage(target, get_estimated_damage(target));
             }
         }
     }
@@ -266,6 +294,10 @@ function routine_attack() {
 
 // initialize to 1 minute ago so the first CM can be sent immediately
 let last_merchant_cm = new Date(Date.now() - 60 * 1000);
+// when to call the merchant for potions. The merchant carries one stack of each at most, so
+// calling him at 9000 sent him on a 2000 unit walk for a few hundred potions. 3000 mana potions
+// is still well over an hour of 3shot, and it lets him arrive with a real delivery
+const pot_request_at = 3000;
 
 function routine() {
     if (character.rip) {
@@ -304,7 +336,7 @@ function routine() {
     let now = new Date();
     
     // if more than 1 minute since last cm then send
-    if (now - last_merchant_cm > 6000 && (hpot_count < 9000 || mpot_count < 9000 || esize < 10 || gold > 1000000 || (character.s?.mluck?.ms ? character.s.mluck.ms : 0) < 600000)) {
+    if (now - last_merchant_cm > 6000 && (hpot_count < pot_request_at || mpot_count < pot_request_at || esize < 10 || gold > 1000000 || (character.s?.mluck?.ms ? character.s.mluck.ms : 0) < 600000)) {
         // the merchant is out of the party, he cannot read our position from parent.party, so send it along
         let msg = { "type" : "help", "esize": esize, "gold": gold, "hpot_count": hpot_count, "mpot_count": mpot_count, "mluck" : character?.s?.mluck?.ms ? character.s.mluck.ms : 0, "map": character.map, "in": character.in, "x": character.x, "y": character.y };
         send_cm(merchant_name, msg);
@@ -440,11 +472,16 @@ function regen() {
     let mp_required = max_mp - current_mp;
     let hp_required = max_hp - current_hp;
 
-    if (mp_required > 500) {
+    // hpot1 and mpot1 share one 2 s potion cooldown, so only one of them can go out at a time.
+    // Health wins while we are actually hurt; otherwise the mana potion goes out the moment a
+    // full 500 mp is not wasted, because mana is what caps 3shot on the croc pack
+    if (hp_required > 500 && get_percent(current_hp, max_hp) < 75) {
+        use_skill('use_hp');
+    }
+    else if (mp_required >= 500) {
         use_skill('use_mp');
     }
-
-    if (hp_required > 500) {
+    else if (hp_required > 500) {
         use_skill('use_hp');
     }
 }
@@ -825,27 +862,24 @@ function get_supershot_damage() {
   return 1.5 * character.attack;
 }
 
+// returns true when the class routine already spent the attack cooldown on a skill that shares
+// it, so that routine_attack does not throw a plain attack at the same cooldown
 async function use_skills(target) {
     switch (character.ctype) {
         case 'warrior':
-            await use_warrior_skills(target);
-            break;
+            return await use_warrior_skills(target);
         case 'paladin':
-            await use_paladin_skills(target);
-            break;
+            return await use_paladin_skills(target);
         case 'mage':
-            await use_mage_skills(target);
-            break;
+            return await use_mage_skills(target);
         case 'ranger':
-            await use_ranger_skills(target);
-            break;
+            return await use_ranger_skills(target);
         case 'priest':
-            await use_priest_skills(target);
-            break;
+            return await use_priest_skills(target);
         case 'rogue':
-            await use_rogue_skills(target);
-            break;
+            return await use_rogue_skills(target);
     }
+    return false;
 }
 
 async function use_warrior_skills(target) {
@@ -997,20 +1031,6 @@ async function use_mage_skills(target) {
 }
 
 async function use_rogue_skills(target) {
-    // rspeed : 320 range, 45 minutes of extra speed, keep ourselves and then the party covered
-    if (!character.s.rspeed && can_cast(G.skills.rspeed, character)) {
-        use_skill("rspeed", character.name);
-    }
-    else {
-        for (let party_member of get_party_members()) {
-            let player = get_player(party_member.name);
-            if (player && (!player.s || !player.s.rspeed) && can_cast(G.skills.rspeed, player)) {
-                use_skill("rspeed", player.name);
-                break;
-            }
-        }
-    }
-
     // pcoat : poisons everything we hit for 7s, a poison sack is worth it only on a monster that lives
     if (!character.s.poisonous && quantity("poison") > 0 && !is_oneshot_target(target) && can_cast(G.skills.pcoat, character)) {
         use_skill("pcoat");
@@ -1042,6 +1062,36 @@ async function use_rogue_skills(target) {
     }
 }
 
+// rspeed : 320 range, 320 mp, a 100 ms cooldown and 45 minutes of extra speed, so it is free in
+// practice and worth about 4% of the group's kills — every fighter spends less time closing the
+// gap to its target. It used to ride along with the rogue's attack skills, which meant nobody
+// got buffed while the rogue had nothing in range, so it runs on its own timer now and covers
+// the party and our own characters, not just whoever happens to be in the party list
+function check_rspeed() {
+    if (character.ctype != "rogue" || character.rip) return;
+
+    if (!character.s.rspeed) {
+        if (can_cast(G.skills.rspeed, character)) use_skill("rspeed", character.name);
+        return;
+    }
+
+    for (let name of get_rspeed_targets()) {
+        let player = get_player(name);
+        if (player && !player.rip && (!player.s || !player.s.rspeed) && can_cast(G.skills.rspeed, player)) {
+            use_skill("rspeed", player.name);
+            break;
+        }
+    }
+}
+
+function get_rspeed_targets() {
+    let names = get_party_members().map(member => member.name);
+    for (let name of my_characters) {
+        if (name != merchant_name && !names.includes(name)) names.push(name);
+    }
+    return names;
+}
+
 function get_mentalburst_damage() {
     return 0.6 * character.attack;
 }
@@ -1068,6 +1118,7 @@ async function use_ranger_skills(target) {
         var supershot_damage = get_supershot_damage();
         // game_log("Sniping for " + supershot_damage + " dmg and " + Math.round(get_distance(target, character)) + " distance", colorGreen);
         use_skill("supershot", target);
+        register_damage(target, supershot_damage);
     }
     else {
         // game_log("Cannot cast Supershot", colorRed);
@@ -1077,6 +1128,8 @@ async function use_ranger_skills(target) {
     if (can_cast(G.skills.piercingshot, target) && !is_oneshot_target(target)) {
         // game_log("piercingshot", colorGreen);
         use_skill('piercingshot', target);
+        // 0.75x damage but it pierces 500 armor, which is all of croc's 40
+        register_damage(target, character.attack * G.skills.piercingshot.damage_multiplier);
     }
     else {
         // game_log("Cannot cast Piercing Shot", colorRed);
@@ -1100,6 +1153,8 @@ async function use_ranger_skills(target) {
         // game_log("Cannot cast 4 Fingers", colorRed);
     }
 
+    // 5shot is 0.5x damage over five targets for 320 mp : on a grow pack we already one-shot it
+    // cannot beat a plain attack, so it stays vetoed there. This veto is about 5shot only
     if (!is_grow_monster(target.mtype) || !is_oneshot_target(target)) {
         // 5-shot NB! aoe
         if (can_cast(G.skills["5shot"], target) && target.max_hp < (character.attack * 5)) {
@@ -1108,28 +1163,36 @@ async function use_ranger_skills(target) {
             if (target.level == 1 && !is_boss(target) && !is_hard_to_kill(target) && m_count >= 5 && m_hl_count < 1 && character.mp > 500 && get_percent(character.mp, character.max_mp) > 25) {
                 // game_log("5shot", colorGreen);
                 use_skill('5shot', target);
+                register_damage(target, get_estimated_damage(target) * G.skills["5shot"].damage_multiplier);
+                return true;
             }
         }
         else {
             // game_log("5shot != " + target.max_hp  + " target.max_hp", colorRed);
         }
+    }
 
-        // 3-shot NB! aoe
-        if (can_cast(G.skills["3shot"], target) && target.max_hp < (character.attack * 3)) {
-            var m_count = get_near_monsters_count();
-            var m_hl_count = get_near_hilevel_monsters_count();
-            if (target.level == 1 && !is_boss(target) && !is_hard_to_kill(target) && m_count >= 3 && m_hl_count < 1 && character.mp > 500 && get_percent(character.mp, character.max_mp) > 25) {
-                // game_log("3shot", colorGreen);
-                use_skill("3shot", target);
-            }
-            else {
-                // game_log("3shot !!= " + m_count + " m_count " + m_hl_count + " m_hl_count", colorGreen);
-            }
-        }
-        else {
-            // game_log("3shot != " + target.max_hp  + " target.max_hp", colorRed);
+    // 3-shot NB! aoe. 0.7x damage per target, but 200 mp per CAST and not per target : two crocs
+    // in range is already 1.4x a plain attack and three is 2.1x. croc is 3200 hp / 40 armor so
+    // the max_hp < attack*3 gate passes, and the grow veto above must not reach here — on this
+    // pack 3shot is the ranger's main attack. Mana is the only real limit, which is why regen()
+    // keeps mpot1 on cooldown. Counting live crocs in range, not every monster within 400
+    if (can_cast(G.skills["3shot"], target) && target.max_hp < (character.attack * 3)) {
+        let in_range = get_near_monster_type_in_range_count(target.mtype);
+        if (in_range >= 2 && !is_boss(target) && !is_hard_to_kill(target) && get_near_foreign_hilevel_count() < 1
+            && character.mp >= G.skills["3shot"].mp * 2) {
+            // game_log("3shot on " + in_range + " targets", colorGreen);
+            use_skill("3shot", target);
+            // only the primary target is known here, the other two are picked by the server
+            register_damage(target, get_estimated_damage(target) * G.skills["3shot"].damage_multiplier);
+            return true;
         }
     }
+    else {
+        // game_log("3shot != " + target.max_hp  + " target.max_hp", colorRed);
+    }
+
+    return false;
 }
 
 function can_cast(cast_skill, target) {
@@ -1254,7 +1317,7 @@ function get_party_members() {
     // use this for near members only
     // parent.party_list [ "HexMer", "HexPri", "HexNeo", "HexReo" ]
     if (parent.party_list && parent.party_list != null) {
-        return Object.values(parent.entities).filter(char => is_character(character) && !char.rip && parent.party_list.includes(char.id));
+        return Object.values(parent.entities).filter(char => is_character(char) && !char.rip && parent.party_list.includes(char.id));
     }
     else return [];
 }
@@ -1340,7 +1403,7 @@ game.on("event", function (data) {
 	}
 });
 
-let temporal_surge_monsters = ['squigtoad'];
+let temporal_surge_monsters = ["croc"];
 function use_temporal_orb() {
     let maps = ['main'];
     if (!is_on_cooldown("temporalsurge") && character.mp >= G.skills.temporalsurge.mp) {
@@ -1407,6 +1470,88 @@ function is_grow_monster(mtype) {
     return false;
 }
 
+// Damage already in flight. A shot lands about one ping after it is fired and the target keeps
+// its old hp in parent.entities until the server confirms the hit, so six characters reading
+// parent.entities all see the same croc as alive and all shoot it. Every shot we fire is booked
+// here and the target picker subtracts it again.
+let damage_in_flight = {};          // entity id -> [{ amount, at }]
+let damage_in_flight_writes = 0;
+
+// a hit is confirmed about one round trip after it is fired. Hold the booking a little longer
+// than that and then forget it, so a miss, a resist or a low estimate cannot park us on a croc
+// that is still alive
+function get_damage_in_flight_ms() {
+    return Math.min(600, Math.max(200, (character.ping || 200) * 3));
+}
+
+function register_damage(target, amount) {
+    if (!target || !target.id || !(amount > 0)) return;
+    if (!damage_in_flight[target.id]) damage_in_flight[target.id] = [];
+    damage_in_flight[target.id].push({ amount: amount, at: Date.now() });
+
+    // crocs respawn with a new id every few seconds, so the ledger has to be swept or it
+    // grows all day. Every hundredth shot is often enough, the map only holds live targets
+    if (++damage_in_flight_writes % 100 == 0) {
+        for (let id of Object.keys(damage_in_flight)) get_damage_in_flight(id);
+    }
+}
+
+function get_damage_in_flight(id) {
+    let entries = damage_in_flight[id];
+    if (!entries) return 0;
+
+    let now = Date.now();
+    let ttl = get_damage_in_flight_ms();
+    entries = entries.filter(entry => now - entry.at < ttl);
+    if (entries.length == 0) {
+        delete damage_in_flight[id];
+        return 0;
+    }
+
+    damage_in_flight[id] = entries;
+    return entries.reduce((sum, entry) => sum + entry.amount, 0);
+}
+
+// the hp a target still has once everything already fired at it has landed
+function get_effective_hp(target) {
+    if (!target || target.hp == null) return 0;
+    return target.hp - get_damage_in_flight(target.id);
+}
+
+// what one plain attack takes off this target, in the same armor convention is_hard_to_kill uses
+function get_estimated_damage(target) {
+    return Math.max(1, character.attack - get_resistance(target));
+}
+
+// monsters of one type inside our attack range that are still worth an arrow. 3shot pays by the
+// number of targets it actually hits, so this is the number that decides whether to cast it
+function get_near_monster_type_in_range_count(mtype) {
+    let count = 0;
+    for (let id in parent.entities) {
+        let entity = parent.entities[id];
+        if (!entity || entity.mtype != mtype || entity.map != character.map) continue;
+        if (get_effective_hp(entity) <= 0) continue;
+        if (distance(character, entity) > character.range) continue;
+        count++;
+    }
+    return count;
+}
+
+// a high level monster that is not part of the pack we farm. Grown crocs are level > 1 by
+// design, so counting every high level monster around would veto AoE on a grow pack forever
+function get_near_foreign_hilevel_count() {
+    let near = get_near_monsters(character.x, character.y, character.range, 1);
+    let count = 0;
+    for (let id in near) if (!farm_monsters.includes(near[id].mtype)) count++;
+    return count;
+}
+
+// characters in stationary_characters farm from the centre of the pack and never walk after a
+// target : the pack comes to them and the travel time disappears
+function holds_position() {
+    return stationary_characters.includes(character.name);
+}
+
 function get_near_monster_type(mtype) {
     var result = {};
     var results = [];
@@ -1419,18 +1564,19 @@ function get_near_monster_type(mtype) {
     }
 
     if (results.length > 0) {
-        if (is_grow_monster(mtype)) {
-            results.sort((a, b) => b.id - a.id);
-            return results[0];
+        let by_distance = (a, b) => distance(a, character) - distance(b, character);
+
+        // nearest first, and never one that is already dead : hp only drops when the server
+        // confirms the hit, one ping after the arrow left, so the damage in flight comes off
+        // first. Grow packs used to get the highest id here — see routine_attack for why not
+        let alive = results.filter(m => get_effective_hp(m) > 0);
+        if (alive.length > 0) {
+            alive.sort(by_distance);
+            return alive[0];
         }
-        else {
-            results.sort((a, b) => {
-                let distA = distance(a, character);
-                let distB = distance(b, character);
-                return distA - distB;
-            });
-            return results[0];
-        }
+
+        results.sort(by_distance);
+        return results[0];
     }
 
     return result;

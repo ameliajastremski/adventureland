@@ -4,8 +4,26 @@ const colorShading = "#909CC0";
 const colorNavy = "#1C222B";
 const colorRed = "#FF0000";
 
-// , "wbreeches", "wattire", "wshoes",  "wcap", "wgloves"
-let bank_items = ["cupid", "snakefang", "brownenvelope", "frogt", "pstem", "ink", "snakeoil", "seashell", "essenceoffire", "goldenegg", "candypop", "seashell", "ornament", "mistletoe", "candy0", "candy1", "candycane", "poison", "gslime", "beewings", "funtoken", "feather0", "gem0", "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8"];
+// Everything the fighters loot ends up in this bag, and the old rule was an allow list of names
+// to bank — which has to be extended for every item in the game. It was not, so 39 of 42 slots
+// filled up with reefglass, stormfeathers and anniversary gifts and there was no room left for a
+// second stack of potions. The rule is inverted now : name what has to stay in the bag, bank the
+// rest. The old list is in the history, it decided nothing that this one does not.
+//   • what a cooperating player is waiting for is added on top of this, see is_keep_item()
+//   • sell_items go to fancypots for gold and compound_items wait for a set of three
+let keep_items = [
+    "hpot1", "mpot1", "hpot0", "mpot0",          // the reason for the whole supply run
+    "stand0", "stand1",                          // the stand we sell from
+    "computer", "supercomputer", "tracker",
+    "cscroll0", "cscroll1", "cscroll2",          // compounding
+    "scroll0", "scroll1", "scroll2",             // upgrading
+    "offering", "offeringp",
+    "elixirluck",
+];
+// a bank trip is worth making once this many stacks have piled up, or as soon as the bag is
+// nearly full : a merchant with no free slot cannot take items and cannot restock potions
+const bank_trip_at = 6;
+const bank_trip_esize = 5;
 let sell_items = ["wgloves", "intamulet", "dexamulet", "stramulet", "crabclaw", "vitscroll", "slimestaff", "stinger", "glolipop", "ringsj", "hpbelt", "hpamulet", "wbreeches", "wattire", "wshoes", "wcap", "cclaw", "vitearring", "rattail"];
 // ,  "lostearring"
 let compound_items = ["intearring", "dexearring", "strearring"];
@@ -18,8 +36,37 @@ let fancypots = {x: fancypots_position[0], y: fancypots_position[1]};
 // let merchant_stand_place = { x: -21, y: -313, map: "mansion" };
 let merchant_stand_place = { x: 10, y: 10, map: "main" };
 let help_queue = [];
+// how many potions a fighter should be carrying, how many we carry ourselves, and how low our
+// own bag may get before the walk back to fancypots is worth it. One stack was never enough to
+// fill even a single fighter and leave something for the other two, and with the bag no longer
+// clogged with loot there is room for a second one. Restocking after every single delivery only
+// kept us walking, the fighters have hours of potions in the bag by then
+const pot_target = 9999;        // per fighter
+const pot_stack = 9999;         // one slot holds this much, buy() gets no more in one call
+const pot_carry = 19998;        // two stacks each, enough for two fighters in one trip
+const pot_restock_at = 6000;
 let last_respawn = new Date();
+// Crafting materials the fighters loot and we have no use for. Both cooperating players take
+// them, so whichever of the two is within range gets the stack — they are added to every entry
+// in cooperating below instead of being repeated in it. level -1 means any level, and these
+// have none. Being listed here also keeps them out of the bank, see is_keep_item()
+let cooperating_materials = {
+    "frostcore": { level : -1 },        // Frost Core
+    "ascale": { level : -1 },           // Armadillo Scale
+    "stormfeather": { level : -1 },     // Storm Feather
+    "spores": { level : -1 },           // Spores
+    "cxjar": { level : -1 },            // CX Jar
+    "anniversarygift": { level : -1 },  // Anniversary Gift
+    "voidthread": { level : -1 },       // Void Thread
+    "cscale": { level : -1 },           // Croc Scale
+    "cshell": { level : -1 },           // Crab Shell
+    "marketparcel": { level : -1 },     // Market Parcel — exclusive, Merrit shop supplies
+};
 let cooperating = { 'HexMer' : { items : {"offeringp": { level : -1 }, "intearring": { level : -1 }, "dexearring": { level : -1 }, "strearring": { level : -1 }, "intring": { level : -1 }, "vitring": { level : -1 }, "strring": { level : -1 }, "dexring": { level : -1 } }  }, 'HexNeo' : { items : { "shield" : { level : 0 }, "mcape" : { level : 0 }, "xmace" : { level : 0 }, "fireblade"  : { level : 0 }, "firestaff" : { level : 0 }, "firebow" : { level : 0 }, "ololipop" : { level : 0 }, "intring" : { level : -1 }, "vitring" : { level : -1 }, "strring" : { level : -1 }, "dexring" : { level : -1 } } } };
+
+for (const cooperating_name of Object.keys(cooperating)) {
+    cooperating[cooperating_name].items = Object.assign({}, cooperating[cooperating_name].items, cooperating_materials);
+}
 
 setInterval(routine, 250);
 setInterval(buff_luck, 1000);
@@ -114,11 +161,11 @@ function routine() {
 
     // store items in bank
     let lost_earring_index = get_leveled_item_index("lostearring", 2);
-    if (has_any_bank_item() || lost_earring_index != -1) {
+    if (should_bank() || lost_earring_index != -1) {
         if (character.stand) close_stand();
 
         // go to bank
-        if (has_bank_item() || lost_earring_index != -1) {
+        if (has_any_bank_item() || lost_earring_index != -1) {
             if (character.map != "bank") {
                 smart_move("bank").then(() => {
                     store_bank_items();
@@ -132,14 +179,14 @@ function routine() {
             smart_move("main");
         }
     }
-    else if (character.map == "bank" && !has_any_bank_item()) {
+    else if (character.map == "bank" && !should_bank()) {
         // all items stored, go back to main
         smart_move("main");
     }
     else {
         let compoundable_item_indexes = get_compoundable_item();
         // go to sell items to fancypots
-        if (has_some_item(sell_items) || character.esize == 0) {
+        if (has_some_item(sell_items)) {
             smart_move("fancypots");
             return;
         }
@@ -173,6 +220,12 @@ function routine() {
                 }
             }
         }
+        else if (has_pots_for_queue()) {
+            // a fighter waiting for potions we are actually carrying is the reason we carry
+            // them : deliver first and restock afterwards. With nothing he can use in the bag
+            // this falls through to the restock trip instead of walking out empty
+            help();
+        }
         else if (need_pots()) {
             let fancypots_npc = find_npc("fancypots");
             if (distance(character, fancypots_npc) > 200) {
@@ -204,31 +257,49 @@ function routine() {
     help();
 }
 
-function has_bank_item() {
-    for (let i = 0; i < bank_items.length; i++) {
-        let bank_item_name = bank_items[i];
-        if (has_item(bank_item_name)) {
-            return true;
-        }
+// an item that has a job to do here : potions, the stand, scrolls, and whatever a cooperating
+// player is still waiting to be handed. Everything else is loot passing through
+function is_keep_item(name) {
+    if (!name) return false;
+    if (keep_items.includes(name)) return true;
+    if (sell_items.includes(name)) return true;      // sold at fancypots, not banked
+    if (compound_items.includes(name)) return true;  // waiting for a set of three
+
+    for (const player of Object.keys(cooperating)) {
+        let items = cooperating[player].items;
+        if (items && items[name]) return true;
     }
+
     return false;
+}
+
+function get_bankable_indexes() {
+    let indexes = [];
+    for (let i = 0; i < 42; i++) {
+        let item = character.items[i];
+        if (!item || !item.name || is_keep_item(item.name)) continue;
+        indexes.push(i);
+    }
+    return indexes;
+}
+
+// whether the walk to the bank is worth it right now
+function should_bank() {
+    let bankable = get_bankable_indexes().length;
+    if (bankable == 0) return false;
+    return bankable >= bank_trip_at || character.esize <= bank_trip_esize;
 }
 
 function store_bank_items() {
     if (character.map == "bank") {
         let lost_earring_index = get_leveled_item_index("lostearring", 2);
-        for (let i = 0; i < bank_items.length; i++) {
-            let bank_item_name = bank_items[i];
-            if (lost_earring_index != -1) {
-                game_log("storing lost earring +2");
-                bank_store(lost_earring_index);
-                lost_earring_index = -1; // only store once
-            }
+        if (lost_earring_index != -1) {
+            game_log("storing lost earring +2");
+            bank_store(lost_earring_index);
+        }
 
-            let inventory_item_indexes = get_inventory_item_indexes(bank_item_name);
-            for (let inventory_item_index of inventory_item_indexes) {
-                bank_store(inventory_item_index);
-            }
+        for (let index of get_bankable_indexes()) {
+            bank_store(index);
         }
 
         smart_move("main");
@@ -249,11 +320,13 @@ function sell_some() {
     }
 }
 
+// whether the walk back to fancypots is worth making. buy_pots() still tops the bag up to a full
+// stack whenever we are standing near the NPC anyway, so this only decides about the trip
 function need_pots() {
     let hpot_count = inventory_item_count("hpot1");
     let mpot_count = inventory_item_count("mpot1");
-    let hpot_to_buy = hpot_count < 9999 ? 9999 - hpot_count : 0;
-    let mpot_to_buy = mpot_count < 9999 ? 9999 - mpot_count : 0;
+    let hpot_to_buy = hpot_count < pot_restock_at ? pot_carry - hpot_count : 0;
+    let mpot_to_buy = mpot_count < pot_restock_at ? pot_carry - mpot_count : 0;
 
     if (hpot_to_buy == 0 && mpot_to_buy == 0) {
         return false;
@@ -277,8 +350,8 @@ function need_pots() {
 function buy_pots() {
     let hpot_count = inventory_item_count("hpot1");
     let mpot_count = inventory_item_count("mpot1");
-    let hpot_to_buy = hpot_count < 9999 ? 9999 - hpot_count : 0;
-    let mpot_to_buy = mpot_count < 9999 ? 9999 - mpot_count : 0;
+    let hpot_to_buy = hpot_count < pot_carry ? pot_carry - hpot_count : 0;
+    let mpot_to_buy = mpot_count < pot_carry ? pot_carry - mpot_count : 0;
 
     if (hpot_to_buy == 0 && mpot_to_buy == 0) {
         return;
@@ -299,8 +372,10 @@ function buy_pots() {
     }
 
     if (distance(character, fancypots_npc) < 300) {
-        if (hpot_to_buy > 0) buy("hpot1", hpot_to_buy);
-        if (mpot_to_buy > 0) buy("mpot1", mpot_to_buy);
+        // one call cannot bring in more than a single stack, and this runs four times a second,
+        // so the second stack fills itself on the next tick
+        if (hpot_to_buy > 0) buy("hpot1", Math.min(hpot_to_buy, pot_stack));
+        if (mpot_to_buy > 0) buy("mpot1", Math.min(mpot_to_buy, pot_stack));
     }
 }
 
@@ -482,13 +557,7 @@ function get_compoundable_item() {
 }
 
 function has_any_bank_item() {
-    for (let i = 0; i < bank_items.length; i++) {
-        let bank_item_name = bank_items[i];
-        if (has_item(bank_item_name)) {
-            return true;
-        }
-    }
-    return false;
+    return get_bankable_indexes().length > 0;
 }
 
 function inventory_item_count(item_name) {
@@ -569,7 +638,8 @@ function help() {
         if (help_request.on_the_way) {
             game_log("already on the way to help " + name, colorShading);
             if (!help_entity || distance(character, help_entity) > 300) {
-                return;
+                // still walking to this one, but the others in the queue are not his to block
+                continue;
             }
         }
 
@@ -584,17 +654,14 @@ function help() {
                     continue;
                 }
 
-                let hpot_to_send = 9999 - help_request.data.hpot_count;
-                let mpot_to_send = 9999 - help_request.data.mpot_count;
-
-                let hpot_index = locate_item("hpot1");
-                let mpot_index = locate_item("mpot1");
+                // everyone still queued needs a share : we carry one stack of each pot at most,
+                // so the first fighter served must not walk off with all of it
+                let waiting = Object.keys(help_queue).length;
 
                 delete help_queue[name];
                 last_send_target = name;
-                send_item(name, hpot_index, hpot_to_send);
-                send_item(name, mpot_index, mpot_to_send);
-                delete help_queue[name];
+                send_pots(name, "hpot1", pot_target - help_request.data.hpot_count, waiting);
+                send_pots(name, "mpot1", pot_target - help_request.data.mpot_count, waiting);
                 continue;
             }
             else {
@@ -633,6 +700,58 @@ function help() {
             // }
         }
     }
+}
+
+// Hand over potions, taking two things into account that used to lose the whole delivery:
+//
+//   • a fighter can be carrying more than a full stack already (they use far fewer health
+//     potions than mana ones), and pot_target minus that is a negative quantity. send_item
+//     fails on it, and because the health potions went first, the mana ones behind them in
+//     help() never left the bag — which is how the damagers ended up with no mana potions.
+//   • locate_item() returns the FIRST stack of a name, not the biggest. Carrying 9999 mana
+//     potions in slot 40 and a leftover single one in slot 10 meant every send took the stack
+//     of one. Take the biggest stack instead, and never ask it for more than it holds.
+function send_pots(name, pot_name, wanted, receivers) {
+    if (!(wanted > 0)) return;
+
+    let best = -1;
+    let available = 0;
+    for (let index of get_inventory_item_indexes(pot_name)) {
+        let item = character.items[index];
+        let quantity = item && item.q ? item.q : 0;
+        if (quantity > available) {
+            available = quantity;
+            best = index;
+        }
+    }
+
+    if (best == -1 || available <= 0) {
+        game_log("no " + pot_name + " to send to " + name, colorRed);
+        return;
+    }
+
+    let share = receivers > 1 ? Math.floor(available / receivers) : available;
+    let to_send = Math.min(wanted, share);
+    if (to_send <= 0) return;
+
+    game_log("sending " + to_send + " " + pot_name + " to " + name, colorGreen);
+    send_item(name, best, to_send);
+}
+
+// is there someone in the queue we can actually serve right now? Walking out to deliver nothing
+// and walking off to restock with a full bag are both wasted trips
+function has_pots_for_queue() {
+    let hpot_count = inventory_item_count("hpot1");
+    let mpot_count = inventory_item_count("mpot1");
+
+    for (const name in help_queue) {
+        let data = help_queue[name] ? help_queue[name].data : null;
+        if (!data) continue;
+        if (hpot_count > 0 && pot_target - data.hpot_count > 0) return true;
+        if (mpot_count > 0 && pot_target - data.mpot_count > 0) return true;
+    }
+
+    return false;
 }
 
 function get_leveled_item_index(name, level) {

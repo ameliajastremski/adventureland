@@ -38,6 +38,7 @@ const FILES = {
     2: { file: "merchant.js", name: "merchant" },
     3: { file: "kiss.js", name: "kiss" },
     4: { file: "tinyp.js", name: "tinyp" },
+    5: { file: "dump.js", name: "dump" },
     7: { file: "metrics.js", name: "metrics" },
 };
 
